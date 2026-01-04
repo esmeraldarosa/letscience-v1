@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sqlmodel
+httpx
+beautifulsoup4
+pandas
+python-multipart
+# For later NLP/ML if needed
+# spacy
+# textblob

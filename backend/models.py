@@ -1,0 +1,197 @@
+from typing import List, Optional
+from datetime import datetime
+from sqlmodel import Field, SQLModel, Relationship
+
+class ProductBase(SQLModel):
+    name: str # e.g. "Pembrolizumab"
+    description: Optional[str] = None
+    target_indication: Optional[str] = None # e.g. "Melanoma"
+    development_phase: Optional[str] = None # e.g. "Approved"
+    moa_video_url: Optional[str] = None # YouTube Embed URL
+
+class Product(ProductBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    patents: List["Patent"] = Relationship(back_populates="product")
+    articles: List["ScientificArticle"] = Relationship(back_populates="product")
+    trials: List["ClinicalTrial"] = Relationship(back_populates="product")
+    conferences: List["Conference"] = Relationship(back_populates="product")
+    
+    side_effects: List["ProductSideEffect"] = Relationship(back_populates="product")
+    synthesis_steps: List["ProductSynthesis"] = Relationship(back_populates="product")
+    
+    # New enhanced relationships
+    milestones: List["ProductMilestone"] = Relationship(back_populates="product")
+    indications: List["ProductIndication"] = Relationship(back_populates="product")
+    synthesis_schemes: List["ProductSynthesisScheme"] = Relationship(back_populates="product")
+    pharmacokinetics: List["ProductPharmacokinetics"] = Relationship(back_populates="product")
+    experimental_models: List["ProductExperimentalModel"] = Relationship(back_populates="product")
+
+class ProductSideEffect(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    effect: str
+    product: Optional[Product] = Relationship(back_populates="side_effects")
+
+class ProductSynthesis(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    step_description: str
+    product: Optional[Product] = Relationship(back_populates="synthesis_steps")
+
+class Patent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    source_id: str
+    title: str
+    abstract: Optional[str]
+    assignee: Optional[str]
+    status: Optional[str]
+    publication_date: Optional[datetime]
+    url: Optional[str]
+    
+    # Enhanced fields
+    claim_summary: Optional[str] = None  # Summary of key claims
+    diseases_in_claims: Optional[str] = None  # Comma-separated diseases from claims
+    patent_type: Optional[str] = None  # "Product", "Combination", "Use"
+    
+    product: Optional[Product] = Relationship(back_populates="patents")
+
+class ScientificArticle(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    doi: str
+    title: str
+    abstract: Optional[str]
+    authors: Optional[str] # Comma separated
+    publication_date: Optional[datetime]
+    url: Optional[str]
+    
+    product: Optional[Product] = Relationship(back_populates="articles")
+
+class ClinicalTrial(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    nct_id: str
+    title: str
+    status: str
+    phase: str
+    start_date: Optional[datetime] = None
+    sponsor: Optional[str] = None
+    url: Optional[str]
+    
+    product: Optional[Product] = Relationship(back_populates="trials")
+
+class Conference(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    title: str
+    abstract: Optional[str]
+    conference_name: str
+    date: Optional[datetime]
+    url: Optional[str]
+
+    product: Optional[Product] = Relationship(back_populates="conferences")
+
+# --- Enhanced Models ---
+
+class ProductMilestone(SQLModel, table=True):
+    """Development timeline milestones"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    date: datetime
+    event: str  # e.g., "Phase 1 Start", "FDA Approval"
+    phase: Optional[str] = None  # e.g., "Preclinical", "Phase 1", "Approved"
+    
+    product: Optional[Product] = Relationship(back_populates="milestones")
+
+class ProductIndication(SQLModel, table=True):
+    """Disease indications with references"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    disease_name: str  # e.g., "Melanoma"
+    approval_status: Optional[str] = None  # e.g., "Approved", "Phase 3", "Investigational"
+    reference_url: Optional[str] = None
+    reference_title: Optional[str] = None
+    
+    product: Optional[Product] = Relationship(back_populates="indications")
+
+class ProductSynthesisScheme(SQLModel, table=True):
+    """Visual synthesis schemes"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    
+    scheme_name: str  # e.g., "Primary Synthesis Route"
+    scheme_description: Optional[str] = None
+    scheme_image_url: Optional[str] = None  # Path to diagram
+    
+    
+    product: Optional[Product] = Relationship(back_populates="synthesis_schemes")
+
+class ProductPharmacokinetics(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    parameter: str # e.g. "Tmax", "Cmax", "Bioavailability"
+    value: str # e.g. "2-4 hours", "95%"
+    unit: Optional[str] = None
+    product: Optional[Product] = Relationship(back_populates="pharmacokinetics")
+
+class ProductExperimentalModel(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    model_name: str # e.g. "MC38 murine colon cancer model"
+    model_type: str # e.g. "In Vivo", "In Vitro"
+    description: str
+    product: Optional[Product] = Relationship(back_populates="experimental_models")
+
+
+# =====================
+# Authentication Models
+# =====================
+
+class User(SQLModel, table=True):
+    """User model for authentication"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    username: str = Field(unique=True, index=True)
+    email: str = Field(unique=True, index=True)
+    password_hash: str  # bcrypt hashed password
+    
+    # 2FA
+    totp_secret: Optional[str] = None  # TOTP secret for 2FA
+    is_2fa_enabled: bool = Field(default=False)
+    
+    # User status
+    is_active: bool = Field(default=True)
+    is_admin: bool = Field(default=False)
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login: Optional[datetime] = None
+
+
+class AlertSubscription(SQLModel, table=True):
+    """User subscriptions for product update alerts"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    
+    user_id: int = Field(foreign_key="user.id", index=True)
+    product_id: int = Field(foreign_key="product.id", index=True)
+    
+    # Alert preferences
+    alert_patents: bool = Field(default=True)
+    alert_trials: bool = Field(default=True)
+    alert_articles: bool = Field(default=True)
+    alert_conferences: bool = Field(default=True)
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        # Unique constraint: one subscription per user per product
+        pass

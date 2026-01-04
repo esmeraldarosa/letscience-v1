@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from typing import List, Optional
 from pydantic import BaseModel
@@ -56,6 +56,10 @@ if os.path.exists(static_path):
 
 # --- Endpoints ---
 
+@app.get("/")
+def root():
+    return RedirectResponse(url="/app/index.html")
+
 @app.post("/products/", response_model=Product)
 def create_product(product: Product, session: Session = Depends(get_session)):
     session.add(product)
@@ -93,7 +97,10 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
             "total_articles": len(product.articles),
             "total_trials": len(product.trials),
             "latest_phase": product.development_phase
-        }
+        },
+        "pharmacokinetics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit} for p in product.pharmacokinetics],
+        "pharmacodynamics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit, "target": p.target} for p in product.pharmacodynamics],
+        "experimental_models": [{"model_name": m.model_name, "model_type": m.model_type, "description": m.description} for m in product.experimental_models]
     }
 
 

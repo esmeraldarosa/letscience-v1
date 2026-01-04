@@ -25,6 +25,7 @@ class Product(ProductBase, table=True):
     indications: List["ProductIndication"] = Relationship(back_populates="product")
     synthesis_schemes: List["ProductSynthesisScheme"] = Relationship(back_populates="product")
     pharmacokinetics: List["ProductPharmacokinetics"] = Relationship(back_populates="product")
+    pharmacodynamics: List["ProductPharmacodynamics"] = Relationship(back_populates="product")
     experimental_models: List["ProductExperimentalModel"] = Relationship(back_populates="product")
 
 class ProductSideEffect(SQLModel, table=True):
@@ -141,6 +142,15 @@ class ProductPharmacokinetics(SQLModel, table=True):
     value: str # e.g. "2-4 hours", "95%"
     unit: Optional[str] = None
     product: Optional[Product] = Relationship(back_populates="pharmacokinetics")
+
+class ProductPharmacodynamics(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: Optional[int] = Field(default=None, foreign_key="product.id")
+    parameter: str # e.g. "Ki", "IC50", "EC50"
+    value: str # e.g. "0.5 nM", "12 nM"
+    unit: Optional[str] = None
+    target: Optional[str] = None # e.g. "Factor Xa", "TNF-alpha"
+    product: Optional[Product] = Relationship(back_populates="pharmacodynamics")
 
 class ProductExperimentalModel(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -290,6 +290,13 @@
             )
         };
 
+        const SectionHeader = ({ icon, title, color }) => (
+            <div className="flex items-center gap-2 mb-4">
+                {icon && <i data-lucide={icon} className={`w-5 h-5 ${color}`}></i>}
+                <h3 className={`font-bold text-lg ${color}`}>{title}</h3>
+            </div>
+        );
+
         const Dashboard = ({ onSelectProduct }) => {
             const [products, setProducts] = useState([]);
             const [filters, setFilters] = useState({
@@ -443,13 +450,13 @@
             const [clinicalFilters, setClinicalFilters] = useState({ year: '', sponsor: '', disease: '' });
 
             // Advanced Filters State
-            const [patentFilters, setPatentFilters] = useState({ type: 'all', company: '', year: '', disease: '' });
+            const [patentFilters, setPatentFilters] = useState({ type: 'all', company: '', year: '', disease: '', office: '' });
             const [conferenceFilters, setConferenceFilters] = useState({ type: 'all', company: '', year: '', disease: '' }); // type: all, poster, oral
             const [scienceFilters, setScienceFilters] = useState({ company: '', year: '', disease: '' });
 
             useEffect(() => {
                 setClinicalFilters({ year: '', sponsor: '', disease: '' });
-                setPatentFilters({ type: 'all', company: '', year: '', disease: '' });
+                setPatentFilters({ type: 'all', company: '', year: '', disease: '', office: '' });
                 setConferenceFilters({ type: 'all', company: '', year: '', disease: '' });
                 setScienceFilters({ company: '', year: '', disease: '' });
                 fetchProductIntelligence(productId).then(setData);
@@ -550,7 +557,7 @@
 
             if (!data) return <div className="p-10 text-center text-slate-500">Loading Intelligence...</div>;
 
-            const { product_info, patents, scientific_articles, clinical_trials, conferences, pharmacokinetics, experimental_models } = data;
+            const { product_info, patents, scientific_articles, clinical_trials, conferences, pharmacokinetics, pharmacodynamics, experimental_models, synthesis_steps: synthesis } = data;
 
             // ==========================================
             // AI Assistant Logic & Component
@@ -612,7 +619,7 @@
                                 }
                             }
                             else if (lowerQ.includes('reset') || lowerQ.includes('clear')) {
-                                setPatentFilters({ type: 'all', company: '', year: '', disease: '' });
+                                setPatentFilters({ type: 'all', company: '', year: '', disease: '', office: '' });
                                 response = "Reset all patent filters.";
                             }
                             // Detect company names
@@ -773,19 +780,50 @@
                         {/* Tabs */}
                         <div className="container mx-auto px-4 mt-4 flex gap-6 overflow-x-auto">
                             {[
-                                { id: 'overview', label: 'Overview' },
-                                { id: 'timeline', label: 'Development Timeline' },
-                                { id: 'preclinical', label: 'Preclinical & Pharmacology' },
-                                { id: 'clinical', label: 'Clinical FDA' },
-                                { id: 'science', label: 'Scientific Articles' },
-                                { id: 'patents', label: 'Patents (IP)' },
-                                { id: 'conferences', label: 'Conference Data' }
+                                { id: 'overview', label: 'Overview', icon: 'layout' },
+                                ...((patents && patents.length > 0) ? [{ id: 'patents', label: 'Patents', icon: 'scroll' }] : []),
+                                ...((scientific_articles && scientific_articles.length > 0) ? [{ id: 'science', label: 'Articles', icon: 'file-text' }] : []),
+                                ...((conferences && conferences.length > 0) ? [{ id: 'conferences', label: 'Conferences', icon: 'mic' }] : []),
+                                ...((data.milestones && data.milestones.length > 0) ? [{ id: 'timeline', label: 'Timeline', icon: 'flag' }] : []),
+                                ...((product_info.moa_video_url) ? [{ id: 'moa', label: 'MOA', icon: 'dna' }] : []),
+                                ...((pharmacodynamics && pharmacodynamics.length > 0) ? [{ id: 'preclinical', label: 'Preclinical', icon: 'microscope' }] : []),
+                                ...((clinical_trials && clinical_trials.length > 0) ? [{ id: 'clinical', label: 'Clinical', icon: 'activity' }] : []),
+                                ...((pharmacokinetics && pharmacokinetics.length > 0) ? [{ id: 'pk', label: 'ADME', icon: 'pill' }] : []),
+                                // Conditionally add Synthesis tab (Small molecules + has data)
+                                ...(!/(antibody|monoclonal|IgG|protein|peptide|CHO cell)/i.test(product_info.description) && synthesis && synthesis.length > 0 ? [{ id: 'synthesis', label: 'Synthesis', icon: 'flask-conical' }] : []),
+                                ...((experimental_models && experimental_models.length > 0) ? [{ id: 'experimental_models', label: 'Models', icon: 'flask-round' }] : []),
                             ].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? 'border-accent text-accent' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab.id
+                                        ? 'bg-slate-900 text-white shadow-md transform scale-105'
+                                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:border-slate-300'
+                                        }`}
                                 >
+                                    {/* Icon rendering logic provided by lucide.createIcons() but we need to use the i tag for lucide to pick it up or LucideReact if available. Since this is likely vanilla-ish React without LucideReact components imported, we might need a helper or just emojis if lucide isn't set up for dynamic icons easily.
+                                        Looking at the file context, I see `lucide.createIcons()` in useEffect. So I should render <i data-lucide={tab.icon}/> 
+                                        However, lucide.createIcons() runs once. Better to usage SVG or emojis if re-rendering is frequent, OR use the existing pattern.
+                                        Wait, existing code uses `lucide.createIcons()` in `useEffect`. If I inject new `i` tags, I might need to re-run `lucide.createIcons()`. 
+                                        Actually, simpler to use Emojis for "Visual" request if I can't easily rely on Lucide re-running, OR I can use the same SVGs I used in Quick Access if I copy them.
+                                        Let's stick to the high-quality emojis used in Quick Access for consistency and reliability, or simpler SVGs.
+                                        The user liked the "Quick Access" look. Let's replicate that style but horizontal.
+                                        Actually, the previous Quick Access had Emojis. Let's use Emojis for instant visual impact.
+                                        Overview: 📊, Patents: 📜, Science: 📄, Conferences: 🎤, Timeline: 📅, MOA: 🧬, Preclinical: 🔬, Clinical: 🏥, ADME: 💊, Synthesis: 🧪, Models: 🧫
+                                     */}
+                                    <span>{
+                                        tab.id === 'overview' ? '📊' :
+                                            tab.id === 'patents' ? '📜' :
+                                                tab.id === 'science' ? '📄' :
+                                                    tab.id === 'conferences' ? '🎤' :
+                                                        tab.id === 'timeline' ? '📅' :
+                                                            tab.id === 'moa' ? '🧬' :
+                                                                tab.id === 'preclinical' ? '🔬' :
+                                                                    tab.id === 'clinical' ? '🏥' :
+                                                                        tab.id === 'pk' ? '💊' :
+                                                                            tab.id === 'synthesis' ? '⚗️' :
+                                                                                tab.id === 'experimental_models' ? '🧫' : ''
+                                    }</span>
                                     {tab.label}
                                 </button>
                             ))}
@@ -797,23 +835,7 @@
 
                         {activeTab === 'overview' && (
                             <div className="space-y-6">
-                                {/* MOA Video Section */}
-                                {product_info.moa_video_url && (
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6">
-                                        <SectionHeader icon="play" title="Mechanism of Action" color="text-indigo-600" />
-                                        <div className="aspect-video w-full rounded-lg overflow-hidden bg-slate-100">
-                                            <iframe
-                                                width="100%"
-                                                height="100%"
-                                                src={product_info.moa_video_url}
-                                                title="MOA Video"
-                                                frameBorder="0"
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowFullScreen
-                                            ></iframe>
-                                        </div>
-                                    </div>
-                                )}
+
 
                                 {/* Product Summary Card */}
                                 <div className="bg-gradient-to-br from-slate-50 via-white to-accent/5 p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -903,71 +925,68 @@
                                         </div>
                                     </div>
 
+
+
+
                                     {/* Quick Navigation Links */}
                                     <div className="border-t border-slate-200 pt-4">
                                         <h3 className="text-sm font-bold text-slate-500 uppercase mb-3">Quick Access</h3>
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-                                            <button onClick={() => setActiveTab('patents')} className="flex items-center gap-2 px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded-lg text-purple-700 text-sm font-medium transition-colors">
-                                                📜 Patents ({patents.length})
-                                            </button>
-                                            <button onClick={() => setActiveTab('science')} className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 text-sm font-medium transition-colors">
-                                                📄 References ({scientific_articles.length})
-                                            </button>
-                                            <a href="#synthesis-section" className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 rounded-lg text-amber-700 text-sm font-medium transition-colors">
-                                                🧪 Synthesis
-                                            </a>
-                                            <button onClick={() => setActiveTab('clinical')} className="flex items-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg text-green-700 text-sm font-medium transition-colors">
-                                                🏥 Clinical ({clinical_trials.length})
-                                            </button>
-                                            <button onClick={() => setActiveTab('timeline')} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 text-sm font-medium transition-colors">
-                                                📅 Timeline
-                                            </button>
-                                            <button onClick={() => setActiveTab('conferences')} className="flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-700 text-sm font-medium transition-colors">
-                                                🎤 Conferences ({conferences.length})
-                                            </button>
+                                            {patents && patents.length > 0 && (
+                                                <button onClick={() => setActiveTab('patents')} className="flex items-center gap-2 px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded-lg text-purple-700 text-sm font-medium transition-colors">
+                                                    📜 Patents ({patents.length})
+                                                </button>
+                                            )}
+                                            {scientific_articles && scientific_articles.length > 0 && (
+                                                <button onClick={() => setActiveTab('science')} className="flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 text-sm font-medium transition-colors">
+                                                    📄 Articles ({scientific_articles.length})
+                                                </button>
+                                            )}
+                                            {conferences && conferences.length > 0 && (
+                                                <button onClick={() => setActiveTab('conferences')} className="flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-700 text-sm font-medium transition-colors">
+                                                    🎤 Conferences ({conferences.length})
+                                                </button>
+                                            )}
+                                            {data.milestones && data.milestones.length > 0 && (
+                                                <button onClick={() => setActiveTab('timeline')} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 text-sm font-medium transition-colors">
+                                                    📅 Timeline
+                                                </button>
+                                            )}
+                                            {product_info.moa_video_url && (
+                                                <button onClick={() => setActiveTab('moa')} className="flex items-center gap-2 px-3 py-2 bg-pink-50 hover:bg-pink-100 rounded-lg text-pink-700 text-sm font-medium transition-colors">
+                                                    🧬 MOA
+                                                </button>
+                                            )}
+                                            {pharmacodynamics && pharmacodynamics.length > 0 && (
+                                                <button onClick={() => setActiveTab('preclinical')} className="flex items-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 rounded-lg text-red-700 text-sm font-medium transition-colors">
+                                                    🔬 Preclinical
+                                                </button>
+                                            )}
+                                            {clinical_trials && clinical_trials.length > 0 && (
+                                                <button onClick={() => setActiveTab('clinical')} className="flex items-center gap-2 px-3 py-2 bg-green-50 hover:bg-green-100 rounded-lg text-green-700 text-sm font-medium transition-colors">
+                                                    🏥 Clinical ({clinical_trials.length})
+                                                </button>
+                                            )}
+                                            {pharmacokinetics && pharmacokinetics.length > 0 && (
+                                                <button onClick={() => setActiveTab('pk')} className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 rounded-lg text-orange-700 text-sm font-medium transition-colors">
+                                                    💊 ADME
+                                                </button>
+                                            )}
+                                            {!/(antibody|monoclonal|IgG|protein|peptide|CHO cell)/i.test(product_info.description) && synthesis && synthesis.length > 0 && (
+                                                <button onClick={() => setActiveTab('synthesis')} className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 rounded-lg text-amber-700 text-sm font-medium transition-colors">
+                                                    🧪 Synthesis
+                                                </button>
+                                            )}
+                                            {experimental_models && experimental_models.length > 0 && (
+                                                <button onClick={() => setActiveTab('experimental_models')} className="flex items-center gap-2 px-3 py-2 bg-teal-50 hover:bg-teal-100 rounded-lg text-teal-700 text-sm font-medium transition-colors">
+                                                    🧫 Models
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Synthesis Section - Only show for small molecules, not biologics */}
-                                {!/(antibody|monoclonal|IgG|protein|peptide|CHO cell)/i.test(product_info.description) && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4" id="synthesis-section">
-                                        <Card title="Synthesis & Chemistry" icon="flask-conical" className="md:col-span-2">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {/* Synthesis Scheme Visual */}
-                                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                                    <h5 className="text-xs font-bold text-slate-500 uppercase mb-3">Synthesis Scheme</h5>
-                                                    <div className="bg-white rounded border border-dashed border-slate-300 p-8 text-center">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                                        </svg>
-                                                        <p className="text-sm text-slate-400">Synthetic route diagram</p>
-                                                        <p className="text-xs text-slate-300 mt-1">(Visual schemes via ChemDraw/RDKit)</p>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 mt-3">
-                                                        <strong>Source:</strong> PubChem, DrugBank, patent literature
-                                                    </p>
-                                                </div>
-                                                {/* Synthesis Steps */}
-                                                <div>
-                                                    <h5 className="text-xs font-bold text-slate-500 uppercase mb-3">Key Synthesis Steps</h5>
-                                                    <ol className="list-decimal list-inside text-sm text-slate-700 space-y-2 bg-slate-50 p-4 rounded-lg">
-                                                        {data.synthesis_steps && data.synthesis_steps.length > 0 ? (
-                                                            data.synthesis_steps.map((step, idx) => (
-                                                                <li key={idx}>{step}</li>
-                                                            ))
-                                                        ) : (
-                                                            <li className="text-slate-400 italic">No synthesis steps available.</li>
-                                                        )}
-                                                    </ol>
-                                                    <p className="text-xs text-slate-400 mt-3">
-                                                        <strong>Source:</strong> FDA prescribing info, patents
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    </div>
-                                )}
+
                             </div>
                         )}
 
@@ -994,63 +1013,141 @@
                             </div>
                         )}
 
+                        {/* Mechanism of Action Tab */}
+                        {activeTab === 'moa' && (
+                            <div className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                {product_info.moa_video_url ? (
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <SectionHeader icon="play" title="Mechanism of Action" color="text-indigo-600" />
+                                        <div className="aspect-video w-full rounded-lg overflow-hidden bg-slate-100">
+                                            {product_info.moa_video_url.includes('.png') || product_info.moa_video_url.includes('.jpg') ? (
+                                                <img
+                                                    src={product_info.moa_video_url}
+                                                    alt="Mechanism of Action Illustration"
+                                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+                                                />
+                                            ) : (
+                                                <iframe
+                                                    width="100%"
+                                                    height="100%"
+                                                    src={product_info.moa_video_url}
+                                                    title="MOA Video"
+                                                    frameBorder="0"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen
+                                                ></iframe>
+                                            )}
+                                        </div>
+                                        <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                            <h4 className="text-sm font-bold text-slate-700 mb-2">Description</h4>
+                                            <p className="text-slate-600 leading-relaxed">{product_info.description}</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <div className="text-6xl mb-4">🧬</div>
+                                        <h3 className="text-xl font-bold text-slate-700">No Visual Content Available</h3>
+                                        <p className="text-slate-500">Mechanism of action visual data is not currently available for this product.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
 
 
                         {/* Preclinical & Pharmacology Tab */}
+                        {/* Preclinical Data (Pharmacodynamics) Tab */}
                         {activeTab === 'preclinical' && (
                             <div className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Pharmacokinetics */}
-                                    <div className="space-y-6">
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
-                                            <SectionHeader icon="activity" title="Pharmacokinetic Data (ADME)" color="text-emerald-600" />
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-sm text-left">
-                                                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
-                                                        <tr>
-                                                            <th className="px-4 py-3 font-medium">Parameter</th>
-                                                            <th className="px-4 py-3 font-medium">Value</th>
-                                                            <th className="px-4 py-3 font-medium">Unit / Note</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {pharmacokinetics && pharmacokinetics.length > 0 ? (
-                                                            pharmacokinetics.map((pk, i) => (
-                                                                <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                                                                    <td className="px-4 py-3 font-medium text-slate-900">{pk.parameter}</td>
-                                                                    <td className="px-4 py-3 text-slate-700">{pk.value}</td>
-                                                                    <td className="px-4 py-3 text-slate-500">{pk.unit}</td>
-                                                                </tr>
-                                                            ))
-                                                        ) : (
-                                                            <tr><td colSpan="3" className="px-4 py-8 text-center text-slate-400">No pharmacokinetic data available.</td></tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <SectionHeader icon="microscope" title="Preclinical Pharmacology (In Vitro)" color="text-red-600" />
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-medium">Parameter</th>
+                                                        <th className="px-4 py-3 font-medium">Value</th>
+                                                        <th className="px-4 py-3 font-medium">Unit</th>
+                                                        <th className="px-4 py-3 font-medium">Target / Context</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {pharmacodynamics && pharmacodynamics.length > 0 ? (
+                                                        pharmacodynamics.map((pd, i) => (
+                                                            <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                                                                <td className="px-4 py-3 font-medium text-slate-900">{pd.parameter}</td>
+                                                                <td className="px-4 py-3 text-slate-700">{pd.value}</td>
+                                                                <td className="px-4 py-3 text-slate-500">{pd.unit}</td>
+                                                                <td className="px-4 py-3 text-slate-500">{pd.target}</td>
+                                                            </tr>
+                                                        ))
+                                                    ) : (
+                                                        <tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400">No preclinical pharmacology data available.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        )}
 
-                                    {/* Experimental Models */}
-                                    <div className="space-y-6">
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-full">
-                                            <SectionHeader icon="flask" title="Experimental Models" color="text-violet-600" />
-                                            <div className="space-y-4">
-                                                {experimental_models && experimental_models.length > 0 ? (
-                                                    experimental_models.map((model, i) => (
-                                                        <div key={i} className="p-4 bg-slate-50 rounded-lg border border-slate-100">
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <h4 className="font-semibold text-slate-900">{model.model_name}</h4>
-                                                                <Badge color="violet">{model.model_type}</Badge>
-                                                            </div>
-                                                            <p className="text-sm text-slate-600 leading-relaxed">{model.description}</p>
+                        {/* Pharmacokinetics (ADME) Tab */}
+                        {activeTab === 'pk' && (
+                            <div className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <SectionHeader icon="activity" title="Pharmacokinetic Data (ADME)" color="text-emerald-600" />
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-medium">Parameter</th>
+                                                        <th className="px-4 py-3 font-medium">Value</th>
+                                                        <th className="px-4 py-3 font-medium">Unit / Note</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {pharmacokinetics && pharmacokinetics.length > 0 ? (
+                                                        pharmacokinetics.map((pk, i) => (
+                                                            <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                                                                <td className="px-4 py-3 font-medium text-slate-900">{pk.parameter}</td>
+                                                                <td className="px-4 py-3 text-slate-700">{pk.value}</td>
+                                                                <td className="px-4 py-3 text-slate-500">{pk.unit}</td>
+                                                            </tr>
+                                                        ))
+                                                    ) : (
+                                                        <tr><td colSpan="3" className="px-4 py-8 text-center text-slate-400">No pharmacokinetic data available.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Experimental Models Tab */}
+                        {activeTab === 'experimental_models' && (
+                            <div className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <SectionHeader icon="flask" title="Experimental Models" color="text-violet-600" />
+                                        <div className="space-y-4">
+                                            {experimental_models && experimental_models.length > 0 ? (
+                                                experimental_models.map((model, i) => (
+                                                    <div key={i} className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <h4 className="font-semibold text-slate-900">{model.model_name}</h4>
+                                                            <Badge color="violet">{model.model_type}</Badge>
                                                         </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-center py-8 text-slate-400">No experimental models data available.</div>
-                                                )}
-                                            </div>
+                                                        <p className="text-sm text-slate-600 leading-relaxed">{model.description}</p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-center py-8 text-slate-400">No experimental models data available.</div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1355,6 +1452,19 @@
                                         </select>
                                     </div>
                                     <div className="flex-1 min-w-[150px]">
+                                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Office</label>
+                                        <select
+                                            className="w-full text-sm border-slate-200 rounded-lg p-2"
+                                            value={patentFilters.office}
+                                            onChange={(e) => setPatentFilters({ ...patentFilters, office: e.target.value })}
+                                        >
+                                            <option value="">All Offices</option>
+                                            <option value="US">USPTO (US)</option>
+                                            <option value="EP">EPO (EP)</option>
+                                            <option value="WO">WIPO (WO)</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex-1 min-w-[150px]">
                                         <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Disease</label>
                                         <select
                                             className="w-full text-sm border-slate-200 rounded-lg p-2"
@@ -1384,6 +1494,7 @@
                                         if (patentFilters.company && p.assignee !== patentFilters.company) return false;
                                         if (patentFilters.year && (!p.publication_date || new Date(p.publication_date).getFullYear().toString() !== patentFilters.year)) return false;
                                         if (patentFilters.disease && (!p.diseases_in_claims || !p.diseases_in_claims.includes(patentFilters.disease))) return false;
+                                        if (patentFilters.office && !p.source_id.startsWith(patentFilters.office)) return false;
 
                                         return true;
                                     })
@@ -1563,6 +1674,77 @@
                                             </div>
                                         ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Synthesis Tab */}
+                        {activeTab === 'synthesis' && (
+                            <div className="container mx-auto px-4 py-8 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                {/* Only show logic if small molecule */}
+                                {!/(antibody|monoclonal|IgG|protein|peptide|CHO cell)/i.test(product_info.description) ? (
+                                    <div className="space-y-6">
+                                        <Card title="Chemical Synthesis & Manufacturing" icon="flask-conical">
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                                {/* Visual Reaction Scheme */}
+                                                <div className="space-y-4">
+                                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                                        <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">Reaction Scheme</h3>
+                                                        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                                                            {/* If Eliquis, show the specific generated image, else generic or empty */}
+                                                            {product_info.name.includes('Eliquis') || product_info.name.includes('Apixaban') ? (
+                                                                <img
+                                                                    src="/app/assets/synthesis_scheme_apixaban.png"
+                                                                    alt="Apixaban Synthesis Scheme"
+                                                                    className="w-full h-auto object-contain p-2 hover:scale-105 transition-transform duration-500"
+                                                                />
+                                                            ) : (
+                                                                <div className="p-12 text-center">
+                                                                    <div className="text-6xl mb-4">⚗️</div>
+                                                                    <p className="text-slate-400">Chemical structure visualization available for specific compounds.</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-slate-400 mt-2 text-center italic">
+                                                            Figure 1: Synthetic pathway from starting materials to final active pharmaceutical ingredient.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step-by-Step Details */}
+                                                <div className="space-y-4">
+                                                    <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">Step-by-Step Procedure</h3>
+                                                    <div className="relative border-l-2 border-indigo-100 ml-3 space-y-6 py-2">
+                                                        {data.synthesis_steps && data.synthesis_steps.length > 0 ? (
+                                                            data.synthesis_steps.map((step, idx) => (
+                                                                <div key={idx} className="relative pl-8 group">
+                                                                    <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-white border-2 border-indigo-500 group-hover:bg-indigo-50 transition-colors"></div>
+                                                                    <h4 className="font-bold text-slate-800 text-sm mb-1">Step {idx + 1}</h4>
+                                                                    <p className="text-slate-600 text-sm leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 group-hover:border-indigo-100 transition-colors">
+                                                                        {step}
+                                                                    </p>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="pl-8 text-slate-400 italic">No detailed synthesis steps available for this compound.</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                                        <div className="text-6xl mb-4">🧬</div>
+                                        <h3 className="text-xl font-bold text-slate-700 mb-2">Biologic / Complex Molecule</h3>
+                                        <p className="text-slate-500 text-center max-w-md">
+                                            This product is a biological agent (e.g., antibody, peptide) produced via cell culture or fermentation,
+                                            not via traditional chemical synthesis.
+                                        </p>
+                                        <button onClick={() => setActiveTab('overview')} className="mt-6 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                                            Return to Overview
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

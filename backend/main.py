@@ -108,6 +108,38 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
 # Authentication Endpoints
 # =====================
 
+@app.get("/patents/")
+def get_all_patents(session: Session = Depends(get_session)):
+    """
+    Returns a unified list of all patents across all products.
+    """
+    # Join Patent with Product to get product name
+    results = session.exec(
+        select(Patent, Product.name)
+        .join(Product, Patent.product_id == Product.id)
+    ).all()
+    
+    # Format response
+    patents_data = []
+    for patent, product_name in results:
+        patents_data.append({
+            "id": patent.id,
+            "product_id": patent.product_id,
+            "product_name": product_name,
+            "source_id": patent.source_id,
+            "title": patent.title,
+            "abstract": patent.abstract,
+            "assignee": patent.assignee,
+            "status": patent.status,
+            "publication_date": patent.publication_date,
+            "url": patent.url,
+            "claim_summary": patent.claim_summary,
+            "patent_type": patent.patent_type,
+            "diseases_in_claims": patent.diseases_in_claims
+        })
+        
+    return patents_data
+
 class LoginRequest(BaseModel):
     username: str
     password: str

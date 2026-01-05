@@ -260,7 +260,6 @@
                     </div>
                 </div>
             );
-            );
         };
 
         // --- Layout Components ---
@@ -294,8 +293,8 @@
                                 key={item.id}
                                 onClick={() => onViewChange(item.id)}
                                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeView === item.id
-                                        ? 'bg-accent text-white shadow-lg'
-                                        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                                    ? 'bg-accent text-white shadow-lg'
+                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                                     }`}
                             >
                                 <i data-lucide={item.icon} className="w-5 h-5"></i>
@@ -321,6 +320,191 @@
                             <i data-lucide="log-out" className="w-3 h-3"></i>
                             Log Out
                         </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const PatentsView = ({ onSelectProduct }) => {
+            const [patents, setPatents] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filters, setFilters] = useState({
+                office: 'All',
+                status: 'All',
+                product: 'All'
+            });
+
+            useEffect(() => {
+                fetch('/patents/')
+                    .then(res => res.json())
+                    .then(data => {
+                        setPatents(data);
+                        setLoading(false);
+                    })
+                    .catch(err => setLoading(false));
+            }, []);
+
+            // Derived Data
+            const uniqueProducts = [...new Set(patents.map(p => p.product_name))].sort();
+            const totalPatents = patents.length;
+            const expiringSoon = patents.filter(p => {
+                if (!p.publication_date) return false;
+                const date = new Date(p.publication_date);
+                const expiry = new Date(date.setFullYear(date.getFullYear() + 20));
+                const now = new Date();
+                const diffTime = expiry - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays > 0 && diffDays < 365 * 2; // Expiring in < 2 years
+            }).length;
+
+            const filteredPatents = patents.filter(p => {
+                const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    p.id.toString().includes(searchTerm) ||
+                    p.source_id.toLowerCase().includes(searchTerm.toLowerCase());
+
+                const matchesOffice = filters.office === 'All' ? true :
+                    filters.office === 'US' ? p.source_id.startsWith('US') :
+                        filters.office === 'EP' ? p.source_id.startsWith('EP') :
+                            filters.office === 'WO' ? p.source_id.startsWith('WO') :
+                                !['US', 'EP', 'WO'].some(prefix => p.source_id.startsWith(prefix));
+
+                const matchesStatus = filters.status === 'All' ? true : p.status === filters.status;
+                const matchesProduct = filters.product === 'All' ? true : p.product_name === filters.product;
+
+                return matchesSearch && matchesOffice && matchesStatus && matchesProduct;
+            });
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading patents...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div className="flex justify-between items-end mb-6">
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900 mb-2">Global Patents</h2>
+                            <p className="text-slate-500">Comprehensive patent intelligence and expiry tracking.</p>
+                        </div>
+                        {/* Summary Cards */}
+                        <div className="flex gap-4">
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 min-w-[180px]">
+                                <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                                    <i data-lucide="file-text"></i>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 font-medium uppercase">Total Patents</p>
+                                    <p className="text-2xl font-bold text-slate-900">{totalPatents}</p>
+                                </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 min-w-[180px]">
+                                <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center">
+                                    <i data-lucide="alert-triangle"></i>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 font-medium uppercase">Expiring Soon</p>
+                                    <p className="text-2xl font-bold text-slate-900">{expiringSoon}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filters & Toolbar */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+                        <div className="relative flex-1 min-w-[240px]">
+                            <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input
+                                type="text"
+                                placeholder="Search by title, ID or assignee..."
+                                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-600">Office:</span>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                {['All', 'US', 'EP', 'WO', 'Other'].map(office => (
+                                    <button
+                                        key={office}
+                                        onClick={() => setFilters({ ...filters, office })}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${filters.office === office ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        {office}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <select
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-accent"
+                            value={filters.product}
+                            onChange={(e) => setFilters({ ...filters, product: e.target.value })}
+                        >
+                            <option value="All">All Products</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+
+                    {/* Patents Table */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr>
+                                    <th className="px-6 py-4">Status</th>
+                                    <th className="px-6 py-4">Patent Info</th>
+                                    <th className="px-6 py-4">Product</th>
+                                    <th className="px-6 py-4">Type</th>
+                                    <th className="px-6 py-4 text-right">Expiry Est.</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredPatents.length > 0 ? filteredPatents.map(patent => {
+                                    // Quick expiry calculation for display
+                                    const date = patent.publication_date ? new Date(patent.publication_date) : null;
+                                    const expiryDate = date ? new Date(date.setFullYear(date.getFullYear() + 20)).toLocaleDateString() : 'N/A';
+
+                                    return (
+                                        <tr key={patent.id} className="hover:bg-slate-50/50 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <Badge color={patent.status === 'Granted' ? 'green' : 'orange'}>
+                                                    {patent.status || 'Unknown'}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-slate-900 group-hover:text-accent transition-colors">
+                                                    {patent.source_id}
+                                                </div>
+                                                <div className="text-slate-500 line-clamp-1 max-w-md" title={patent.title}>
+                                                    {patent.title}
+                                                </div>
+                                                <div className="text-xs text-slate-400 mt-1">
+                                                    {patent.assignee}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-slate-700">
+                                                {patent.product_name}
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600">
+                                                {patent.patent_type || 'Composition'}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-mono text-slate-500">
+                                                {expiryDate}
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
+                                    <tr>
+                                        <td colSpan="5" className="px-6 py-12 text-center text-slate-500 italic">
+                                            No patents found matching your filters.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                        <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-xs text-slate-400 text-right">
+                            Showing {filteredPatents.length} of {patents.length} records
+                        </div>
                     </div>
                 </div>
             );
@@ -605,21 +789,21 @@
 
                 const script = `
                     Welcome to your LetScience Intelligence Briefing for ${product_info.name}.
-                    
+
                     ${product_info.name} is a ${product_info.development_phase === 'Approved' ? 'commercially launched' : 'pipeline'} therapeutic ${productType}, targeting ${product_info.target_indication}.
-                    
+
                     Clinical Evidence: This product is supported by ${clinical_trials.length} registered clinical trials and ${scientific_articles.length} peer-reviewed publications documenting its efficacy and safety profile.
-                    
+
                     Mechanism of Action: ${product_info.description}
-                    
+
                     Therapeutic Applications: Currently ${indicationsText}. ${sideEffectsText}
-                    
+
                     Intellectual Property Landscape: The product is protected by ${patents.length} patents covering composition of matter, methods of use, and various claims.
-                    
+
                     Conference Presence: Featured in ${conferences.length} conference presentations at major medical meetings, demonstrating ongoing research interest and clinical development activity.
-                    
+
                     This concludes your LetScience Intelligence Briefing. Thank you for listening.
-                `;
+                    `;
 
                 const utterance = new SpeechSynthesisUtterance(script);
                 utterance.rate = 0.9;
@@ -1868,7 +2052,7 @@
                             <Dashboard onSelectProduct={setSelectedProductId} />
                         );
                     case 'patents':
-                        return <PlaceholderView title="Global Patents" icon="scroll" description="Search and analyze patents across all portfolios." />;
+                        return <PatentsView onSelectProduct={setSelectedProductId} />;
                     case 'articles':
                         return <PlaceholderView title="Scientific Articles" icon="file-text" description="Aggregated library of publications and journals." />;
                     case 'conferences':

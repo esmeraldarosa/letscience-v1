@@ -605,6 +605,139 @@
             );
         };
 
+        const ConferencesView = ({ onSelectProduct }) => {
+            const [conferences, setConferences] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedConf, setSelectedConf] = useState(null);
+            const [filters, setFilters] = useState({ product: 'All' });
+
+            useEffect(() => {
+                fetch('/conferences/').then(res => res.json()).then(data => { setConferences(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            const uniqueProducts = [...new Set(conferences.map(c => c.product_name))].sort();
+            const filteredConferences = conferences.filter(c => {
+                const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    c.conference_name.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesProduct = filters.product === 'All' ? true : c.product_name === filters.product;
+                return matchesSearch && matchesProduct;
+            });
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading conferences...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 relative">
+                    {selectedConf && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={() => setSelectedConf(null)}>
+                            <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-xl font-bold mb-4">{selectedConf.title}</h3>
+                                <div className="space-y-4">
+                                    <div className="bg-slate-50 p-4 rounded-lg">
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Conference</h4>
+                                        <p>{selectedConf.conference_name}</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Abstract</h4>
+                                        <p className="text-sm text-slate-600 leading-relaxed">{selectedConf.abstract || "No abstract available."}</p>
+                                    </div>
+                                    <button onClick={() => onSelectProduct(selectedConf.product_id)} className="text-sm text-accent font-medium hover:underline flex items-center gap-2">
+                                        View Product <i data-lucide="arrow-right" className="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900 mb-2">Conferences</h2>
+                            <p className="text-slate-500">Key scientific meetings and presentations.</p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+                        <input type="text" placeholder="Search title or conference..." className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.product} onChange={e => setFilters({ ...filters, product: e.target.value })}>
+                            <option value="All">All Products</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr><th className="px-6 py-4">Title</th><th className="px-6 py-4">Conference</th><th className="px-6 py-4">Product</th><th className="px-6 py-4 text-right">Date</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredConferences.map(c => (
+                                    <tr key={c.id} onClick={() => setSelectedConf(c)} className="hover:bg-slate-50 cursor-pointer">
+                                        <td className="px-6 py-4 font-medium text-slate-900">{c.title}</td>
+                                        <td className="px-6 py-4 text-slate-600">{c.conference_name}</td>
+                                        <td className="px-6 py-4 text-slate-600">{c.product_name}</td>
+                                        <td className="px-6 py-4 text-right font-mono text-slate-500">{c.date ? new Date(c.date).toLocaleDateString() : 'N/A'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdmeView = ({ onSelectProduct }) => {
+            const [admeData, setAdmeData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [filters, setFilters] = useState({ product: 'All', param: 'All' });
+
+            useEffect(() => {
+                fetch('/adme/').then(res => res.json()).then(data => { setAdmeData(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            const uniqueProducts = [...new Set(admeData.map(d => d.product_name))].sort();
+            const uniqueParams = [...new Set(admeData.map(d => d.parameter))].sort();
+            const filteredData = admeData.filter(d => {
+                const matchesProduct = filters.product === 'All' ? true : d.product_name === filters.product;
+                const matchesParam = filters.param === 'All' ? true : d.parameter === filters.param;
+                return matchesProduct && matchesParam;
+            });
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading PK data...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Pharmacokinetics (ADME)</h2>
+                        <p className="text-slate-500">Consolidated PK parameters across all compounds.</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.product} onChange={e => setFilters({ ...filters, product: e.target.value })}>
+                            <option value="All">All Products</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.param} onChange={e => setFilters({ ...filters, param: e.target.value })}>
+                            <option value="All">All Parameters</option>
+                            {uniqueParams.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr><th className="px-6 py-4">Product</th><th className="px-6 py-4">Parameter</th><th className="px-6 py-4">Value</th><th className="px-6 py-4">Unit</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredData.map(d => (
+                                    <tr key={d.id} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(d.product_id)}>{d.product_name}</td>
+                                        <td className="px-6 py-4 font-mono text-slate-600">{d.parameter}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-800">{d.value}</td>
+                                        <td className="px-6 py-4 text-slate-500">{d.unit}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
         const ArticlesView = ({ onSelectProduct }) => {
             const [articles, setArticles] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -812,6 +945,118 @@
                         <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-xs text-slate-400 text-right">
                             Showing {filteredArticles.length} of {articles.length} records
                         </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ModelsView = ({ onSelectProduct }) => {
+            const [models, setModels] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [filters, setFilters] = useState({ product: 'All', type: 'All' });
+
+            useEffect(() => {
+                fetch('/models/').then(res => res.json()).then(data => { setModels(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            const uniqueProducts = [...new Set(models.map(m => m.product_name))].sort();
+            const uniqueTypes = [...new Set(models.map(m => m.model_type))].sort();
+            const filteredModels = models.filter(m => {
+                const matchesProduct = filters.product === 'All' ? true : m.product_name === filters.product;
+                const matchesType = filters.type === 'All' ? true : m.model_type === filters.type;
+                return matchesProduct && matchesType;
+            });
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading models...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Experimental Models</h2>
+                        <p className="text-slate-500">Catalog of in vivo and in vitro models.</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.product} onChange={e => setFilters({ ...filters, product: e.target.value })}>
+                            <option value="All">All Products</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.type} onChange={e => setFilters({ ...filters, type: e.target.value })}>
+                            <option value="All">All Types</option>
+                            {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr><th className="px-6 py-4">Product</th><th className="px-6 py-4">Model Name</th><th className="px-6 py-4">Type</th><th className="px-6 py-4">Description</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredModels.map(m => (
+                                    <tr key={m.id} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(m.product_id)}>{m.product_name}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-700">{m.model_name}</td>
+                                        <td className="px-6 py-4"><Badge color="purple">{m.model_type}</Badge></td>
+                                        <td className="px-6 py-4 text-slate-500 max-w-md truncate" title={m.description}>{m.description}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const PreclinicalView = ({ onSelectProduct }) => {
+            const [pdData, setPdData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [filters, setFilters] = useState({ product: 'All', target: 'All' });
+
+            useEffect(() => {
+                fetch('/preclinical/').then(res => res.json()).then(data => { setPdData(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            const uniqueProducts = [...new Set(pdData.map(d => d.product_name))].sort();
+            const uniqueTargets = [...new Set(pdData.map(d => d.target).filter(Boolean))].sort();
+            const filteredData = pdData.filter(d => {
+                const matchesProduct = filters.product === 'All' ? true : d.product_name === filters.product;
+                const matchesTarget = filters.target === 'All' ? true : d.target === filters.target;
+                return matchesProduct && matchesTarget;
+            });
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading pharmacology data...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Preclinical Pharmacology</h2>
+                        <p className="text-slate-500">In vitro affinity and potency data (Ki, IC50, EC50).</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.product} onChange={e => setFilters({ ...filters, product: e.target.value })}>
+                            <option value="All">All Products</option>
+                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.target} onChange={e => setFilters({ ...filters, target: e.target.value })}>
+                            <option value="All">All Targets</option>
+                            {uniqueTargets.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr><th className="px-6 py-4">Product</th><th className="px-6 py-4">Parameter</th><th className="px-6 py-4">Target</th><th className="px-6 py-4">Value</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredData.map(d => (
+                                    <tr key={d.id} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(d.product_id)}>{d.product_name}</td>
+                                        <td className="px-6 py-4 font-mono text-slate-600">{d.parameter}</td>
+                                        <td className="px-6 py-4 text-slate-700">{d.target || '-'}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-800">{d.value} {d.unit}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             );

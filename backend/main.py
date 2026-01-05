@@ -166,6 +166,55 @@ def get_all_articles(session: Session = Depends(get_session)):
         
     return articles_data
 
+@app.get("/conferences/")
+def get_all_conferences(session: Session = Depends(get_session)):
+    """Aggregates all conferences."""
+    results = session.exec(select(Conference, Product.name).join(Product, Conference.product_id == Product.id)).all()
+    data = []
+    for conf, p_name in results:
+        data.append({
+            "id": conf.id, "product_id": conf.product_id, "product_name": p_name,
+            "title": conf.title, "abstract": conf.abstract, 
+            "conference_name": conf.conference_name, "date": conf.date, "url": conf.url
+        })
+    return data
+
+@app.get("/adme/")
+def get_all_adme(session: Session = Depends(get_session)):
+    """Aggregates all PK (ADME) data."""
+    results = session.exec(select(ProductPharmacokinetics, Product.name).join(Product, ProductPharmacokinetics.product_id == Product.id)).all()
+    data = []
+    for pk, p_name in results:
+        data.append({
+            "id": pk.id, "product_id": pk.product_id, "product_name": p_name,
+            "parameter": pk.parameter, "value": pk.value, "unit": pk.unit
+        })
+    return data
+
+@app.get("/models/")
+def get_all_models(session: Session = Depends(get_session)):
+    """Aggregates all Experimental Models."""
+    results = session.exec(select(ProductExperimentalModel, Product.name).join(Product, ProductExperimentalModel.product_id == Product.id)).all()
+    data = []
+    for model, p_name in results:
+        data.append({
+            "id": model.id, "product_id": model.product_id, "product_name": p_name,
+            "model_name": model.model_name, "model_type": model.model_type, "description": model.description
+        })
+    return data
+
+@app.get("/preclinical/")
+def get_all_preclinical(session: Session = Depends(get_session)):
+    """Aggregates all PD (Preclinical) data."""
+    results = session.exec(select(ProductPharmacodynamics, Product.name).join(Product, ProductPharmacodynamics.product_id == Product.id)).all()
+    data = []
+    for pd, p_name in results:
+        data.append({
+            "id": pd.id, "product_id": pd.product_id, "product_name": p_name,
+            "parameter": pd.parameter, "value": pd.value, "unit": pd.unit, "target": pd.target
+        })
+    return data
+
 class LoginRequest(BaseModel):
     username: str
     password: str

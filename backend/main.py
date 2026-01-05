@@ -3,7 +3,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from typing import List, Optional
 from pydantic import BaseModel
-from .models import Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription
+from .models import (
+    Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
+    ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme
+)
 from .auth import (
     hash_password, verify_password, 
     create_token, verify_token,
@@ -54,6 +57,12 @@ static_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 if os.path.exists(static_path):
     app.mount("/app", StaticFiles(directory=static_path, html=True), name="static")
 
+# Mount data images
+backend_static_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if not os.path.exists(backend_static_path):
+    os.makedirs(backend_static_path)
+app.mount("/static", StaticFiles(directory=backend_static_path), name="backend_static")
+
 # --- Endpoints ---
 
 @app.get("/")
@@ -91,7 +100,7 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
         "synthesis_steps": [s.step_description for s in product.synthesis_steps],
         "milestones": [{"date": m.date.isoformat(), "event": m.event, "phase": m.phase} for m in product.milestones],
         "indications": [{"disease": i.disease_name, "status": i.approval_status, "ref_title": i.reference_title, "ref_url": i.reference_url} for i in product.indications],
-        "synthesis_schemes": [{"name": s.scheme_name, "description": s.scheme_description, "image_url": s.scheme_image_url} for s in product.synthesis_schemes],
+        "synthesis_schemes": [{"name": s.scheme_name, "description": s.scheme_description, "image_url": s.scheme_image_url, "source_url": s.source_url} for s in product.synthesis_schemes],
         "summary": {
             "total_patents": len(product.patents),
             "total_articles": len(product.articles),
@@ -103,6 +112,66 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
         "experimental_models": [{"model_name": m.model_name, "model_type": m.model_type, "description": m.description} for m in product.experimental_models]
     }
 
+
+# Import connector
+from .pubmed_connector import fetch_pubmed_articles
+from datetime import datetime
+
+@app.post("/products/{product_id}/refresh-articles")
+async def refresh_product_articles(product_id: int, session: Session = Depends(get_session)):
+    """
+    Triggers a real-time fetch of articles from PubMed for the given product.
+    """
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    # Fetch real data
+    print(f"Fetching PubMed data for {product.name}...")
+    try:
+        articles_data = await fetch_pubmed_articles(product.name, max_results=5)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"External API failed: {str(e)}")
+        
+    added_count = 0
+    
+    for item in articles_data:
+        # Check duplicate by title (simple check)
+        # In a real app, use DOI or hash
+        exists = session.exec(select(ScientificArticle).where(
+            ScientificArticle.product_id == product_id,
+            ScientificArticle.title == item["title"]
+        )).first()
+        
+        if not exists:
+            # Parse date safely
+            pub_date = datetime.now()
+            try:
+                # Try parsing "YYYY Mon DD" or "YYYY"
+                # This is a naive parser for demo
+                 pub_date = datetime.strptime(item["date"][0:4], "%Y")
+            except:
+                pass
+
+            new_article = ScientificArticle(
+                product_id=product_id,
+                title=item["title"],
+                doi=item["doi"],
+                authors=item["authors"],
+                abstract=item["desc"], # Summary from e-utils
+                url=item["url"],
+                publication_date=pub_date
+            )
+            session.add(new_article)
+            added_count += 1
+            
+    session.commit()
+    
+    return {
+        "message": f"Successfully refreshed data. Added {added_count} new articles.",
+        "articles_found": len(articles_data),
+        "articles_added": added_count
+    }
 
 # =====================
 # Authentication Endpoints
@@ -466,9 +535,60 @@ def get_my_subscriptions(user: User = Depends(get_current_user), session: Sessio
     product_ids = [s.product_id for s in subscriptions]
     products = session.exec(select(Product).where(Product.id.in_(product_ids))).all() if product_ids else []
     
-    return {
-        "subscriptions": [
-            {"product_id": p.id, "product_name": p.name, "indication": p.target_indication}
-            for p in products
-        ]
-    }
+@app.get("/clinical/")
+def get_all_clinical_trials(session: Session = Depends(get_session)):
+    """
+    Returns a unified list of all clinical trials.
+    """
+    results = session.exec(
+        select(ClinicalTrial, Product.name)
+        .join(Product, ClinicalTrial.product_id == Product.id)
+    ).all()
+    
+    trials_data = []
+    for trial, product_name in results:
+        trials_data.append({
+            "id": trial.id,
+            "product_id": trial.product_id,
+            "product_name": product_name,
+            "nct_id": trial.nct_id,
+            "title": trial.title,
+            "status": trial.status,
+            "phase": trial.phase,
+            "start_date": trial.start_date,
+            "sponsor": trial.sponsor,
+            "url": trial.url
+        })
+    return trials_data
+
+@app.get("/synthesis/")
+def get_all_synthesis(session: Session = Depends(get_session)):
+    """
+    Returns synthesis schemes. 
+    """
+    schemes_results = session.exec(
+        select(ProductSynthesisScheme, Product.name)
+        .join(Product, ProductSynthesisScheme.product_id == Product.id)
+    ).all()
+    
+    schemes_data = []
+    for scheme, product_name in schemes_results:
+        # Filter: Exclude biological/recombinant manufacturing
+        name_lower = scheme.scheme_name.lower()
+        if "recombinant" in name_lower or "biologics" in name_lower:
+            continue
+            
+        schemes_data.append({
+            "type": "scheme",
+            "id": scheme.id,
+            "product_id": scheme.product_id,
+            "product_name": product_name,
+            "name": scheme.scheme_name,
+            "description": scheme.scheme_description,
+            "image_url": scheme.scheme_image_url,
+            "source_url": scheme.source_url
+        })
+    
+    return schemes_data
+
+# Force reload for schema update

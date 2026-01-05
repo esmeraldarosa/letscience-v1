@@ -40,7 +40,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         // API Helper
         const fetchProductIntelligence = async (id) => {
@@ -685,19 +685,48 @@
         const AdmeView = ({ onSelectProduct }) => {
             const [admeData, setAdmeData] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [filters, setFilters] = useState({ product: 'All', param: 'All' });
+            const [searchTerm, setSearchTerm] = useState('');
 
             useEffect(() => {
                 fetch('/adme/').then(res => res.json()).then(data => { setAdmeData(data); setLoading(false); }).catch(() => setLoading(false));
             }, []);
 
-            const uniqueProducts = [...new Set(admeData.map(d => d.product_name))].sort();
-            const uniqueParams = [...new Set(admeData.map(d => d.parameter))].sort();
-            const filteredData = admeData.filter(d => {
-                const matchesProduct = filters.product === 'All' ? true : d.product_name === filters.product;
-                const matchesParam = filters.param === 'All' ? true : d.parameter === filters.param;
-                return matchesProduct && matchesParam;
-            });
+            // Pivot Logic: Group by Product
+            const pivotedData = useMemo(() => {
+                const map = {};
+                admeData.forEach(item => {
+                    if (!map[item.product_name]) {
+                        map[item.product_name] = {
+                            product_id: item.product_id,
+                            product_name: item.product_name,
+                            params: {}
+                        };
+                    }
+                    const key = item.parameter.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    map[item.product_name].params[key] = { value: item.value, unit: item.unit, original: item.parameter };
+                });
+                return Object.values(map).sort((a, b) => a.product_name.localeCompare(b.product_name));
+            }, [admeData]);
+
+            const filteredData = pivotedData.filter(d => d.product_name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            const COLS = [
+                { id: 'cmax', label: 'Cmax' },
+                { id: 'tmax', label: 'Tmax' },
+                { id: 'auc', label: 'AUC' },
+                { id: 't1/2', label: 'Half-Life (t1/2)', keyMatch: ['halflife', 't12', 't1/2'] },
+                { id: 'bioavailability', label: 'Bioavail.', keyMatch: ['bioavailability', 'f'] }
+            ];
+
+            const getValue = (row, col) => {
+                let match = row.params[col.id];
+                if (!match && col.keyMatch) {
+                    for (let alias of col.keyMatch) {
+                        if (row.params[alias]) { match = row.params[alias]; break; }
+                    }
+                }
+                return match;
+            };
 
             if (loading) return <div className="p-12 text-center text-slate-500">Loading PK data...</div>;
 
@@ -705,30 +734,43 @@
                 <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-900 mb-2">Pharmacokinetics (ADME)</h2>
-                        <p className="text-slate-500">Consolidated PK parameters across all compounds.</p>
+                        <p className="text-slate-500">Comparative PK profiles (Cmax, AUC, Tmax).</p>
                     </div>
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
-                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.product} onChange={e => setFilters({ ...filters, product: e.target.value })}>
-                            <option value="All">All Products</option>
-                            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" value={filters.param} onChange={e => setFilters({ ...filters, param: e.target.value })}>
-                            <option value="All">All Parameters</option>
-                            {uniqueParams.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="relative max-w-md">
+                            <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input type="text" placeholder="Search products..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
                     </div>
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
-                                <tr><th className="px-6 py-4">Product</th><th className="px-6 py-4">Parameter</th><th className="px-6 py-4">Value</th><th className="px-6 py-4">Unit</th></tr>
+                                <tr>
+                                    <th className="px-6 py-4 sticky left-0 bg-slate-50 shadow-sm z-10 w-48">Product</th>
+                                    {COLS.map(col => <th key={col.id} className="px-6 py-4 whitespace-nowrap">{col.label}</th>)}
+                                </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredData.map(d => (
-                                    <tr key={d.id} className="hover:bg-slate-50">
-                                        <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(d.product_id)}>{d.product_name}</td>
-                                        <td className="px-6 py-4 font-mono text-slate-600">{d.parameter}</td>
-                                        <td className="px-6 py-4 font-medium text-slate-800">{d.value}</td>
-                                        <td className="px-6 py-4 text-slate-500">{d.unit}</td>
+                                {filteredData.map(row => (
+                                    <tr key={row.product_id} className="hover:bg-slate-50 group">
+                                        <td className="px-6 py-4 font-bold text-slate-900 bg-white group-hover:bg-slate-50 sticky left-0 shadow-sm z-10 border-r border-slate-100 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(row.product_id)}>
+                                            {row.product_name}
+                                        </td>
+                                        {COLS.map(col => {
+                                            const cell = getValue(row, col);
+                                            return (
+                                                <td key={col.id} className="px-6 py-4 whitespace-nowrap">
+                                                    {cell ? (
+                                                        <div>
+                                                            <span className="font-medium text-slate-800">{cell.value}</span>
+                                                            {cell.unit && !String(cell.value).includes(cell.unit) && <span className="text-xs text-slate-400 ml-1">{cell.unit}</span>}
+                                                        </div>
+                                                    ) : <span className="text-slate-300">-</span>}
+                                                </td>
+                                            );
+                                        })}
                                     </tr>
                                 ))}
                             </tbody>
@@ -1052,11 +1094,121 @@
                                         <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(d.product_id)}>{d.product_name}</td>
                                         <td className="px-6 py-4 font-mono text-slate-600">{d.parameter}</td>
                                         <td className="px-6 py-4 text-slate-700">{d.target || '-'}</td>
-                                        <td className="px-6 py-4 font-medium text-slate-800">{d.value} {d.unit}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-800">{d.value} {d.unit && !String(d.value).includes(d.unit) ? d.unit : ''}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const ClinicalView = ({ onSelectProduct }) => {
+            const [trials, setTrials] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [searchTerm, setSearchTerm] = useState('');
+
+            useEffect(() => {
+                fetch('/clinical/').then(res => res.json()).then(data => { setTrials(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            const filteredTrials = trials.filter(t =>
+                t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.nct_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.product_name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading trials...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Clinical Trials</h2>
+                        <p className="text-slate-500">Global registry of ongoing and completed studies.</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="relative max-w-md">
+                            <i data-lucide="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input type="text" placeholder="Search trials, NCT ID or product..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs">
+                                <tr><th className="px-6 py-4">Product</th><th className="px-6 py-4">NCT ID</th><th className="px-6 py-4">Title</th><th className="px-6 py-4">Phase</th><th className="px-6 py-4">Status</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredTrials.map(t => (
+                                    <tr key={t.id} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-bold text-slate-900 cursor-pointer hover:text-accent" onClick={() => onSelectProduct(t.product_id)}>{t.product_name}</td>
+                                        <td className="px-6 py-4 font-mono text-slate-600">
+                                            <a href={t.url || `https://clinicaltrials.gov/study/${t.nct_id}`} target="_blank" rel="noopener noreferrer" className="hover:text-accent underline decoration-slate-300 hover:decoration-accent transition-all">
+                                                {t.nct_id}
+                                            </a>
+                                        </td>
+                                        <td className="px-6 py-4 font-medium text-slate-800 line-clamp-2 max-w-lg">{t.title}</td>
+                                        <td className="px-6 py-4"><Badge color="blue">{t.phase}</Badge></td>
+                                        <td className="px-6 py-4"><Badge color={t.status === 'Recruiting' ? 'green' : 'slate'}>{t.status}</Badge></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const SynthesisView = ({ onSelectProduct }) => {
+            const [schemes, setSchemes] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                fetch('/synthesis/').then(res => res.json()).then(data => { setSchemes(data); setLoading(false); }).catch(() => setLoading(false));
+            }, []);
+
+            if (loading) return <div className="p-12 text-center text-slate-500">Loading synthesis data...</div>;
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Chemical Synthesis</h2>
+                        <p className="text-slate-500">Manufacturing routes and retrosynthetic analysis.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {schemes.map(s => (
+                            <div key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                                <div className="h-48 bg-slate-100 relative group cursor-pointer" onClick={() => onSelectProduct(s.product_id)}>
+                                    {s.image_url ? (
+                                        <img src={s.image_url} alt={s.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                            <i data-lucide="flask-conical" className="w-12 h-12"></i>
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                        <Badge color="white">View Product</Badge>
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="font-bold text-lg text-slate-900">{s.product_name}</h3>
+                                        <Badge color="purple">Route A</Badge>
+                                    </div>
+                                    <h4 className="font-medium text-slate-700 mb-2">{s.name}</h4>
+                                    <p className="text-sm text-slate-500 line-clamp-3">{s.description}</p>
+                                    {s.source_url && (
+                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                            <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors">
+                                                <i data-lucide="external-link" className="w-3 h-3"></i>
+                                                View Scheme Source
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             );
@@ -1376,7 +1528,7 @@
 
             if (!data) return <div className="p-10 text-center text-slate-500">Loading Intelligence...</div>;
 
-            const { product_info, patents, scientific_articles, clinical_trials, conferences, pharmacokinetics, pharmacodynamics, experimental_models, synthesis_steps: synthesis } = data;
+            const { product_info, patents, scientific_articles, clinical_trials, conferences, pharmacokinetics, pharmacodynamics, experimental_models, synthesis_schemes: synthesis } = data;
 
             // ==========================================
             // AI Assistant Logic & Component
@@ -2616,9 +2768,9 @@
                     case 'preclinical':
                         return <PreclinicalView onSelectProduct={setSelectedProductId} />;
                     case 'synthesis':
-                        return <PlaceholderView title="Chemical Synthesis" icon="flask-conical" description="Routes, yields, and manufacturing processes." />;
+                        return <SynthesisView onSelectProduct={setSelectedProductId} />;
                     case 'clinical':
-                        return <PlaceholderView title="Clinical Trials" icon="hospital" description="Global FDA/EMA trial tracking and status." />;
+                        return <ClinicalView onSelectProduct={setSelectedProductId} />;
                     default:
                         return <Dashboard onSelectProduct={setSelectedProductId} />;
                 }

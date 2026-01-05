@@ -131,6 +131,7 @@ class ProductSynthesisScheme(SQLModel, table=True):
     scheme_name: str  # e.g., "Primary Synthesis Route"
     scheme_description: Optional[str] = None
     scheme_image_url: Optional[str] = None  # Path to diagram
+    source_url: Optional[str] = None # External link to scheme source
     
     
     product: Optional[Product] = Relationship(back_populates="synthesis_schemes")

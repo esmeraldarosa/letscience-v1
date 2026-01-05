@@ -2608,13 +2608,13 @@
                     case 'articles':
                         return <ArticlesView onSelectProduct={setSelectedProductId} />;
                     case 'conferences':
-                        return <PlaceholderView title="Conferences" icon="mic" description="Upcoming events and abstract submissions." />;
+                        return <ConferencesView onSelectProduct={setSelectedProductId} />;
                     case 'adme':
-                        return <PlaceholderView title="ADME Data" icon="activity" description="Comparative Pharmacokinetics and ADME profiles." />;
+                        return <AdmeView onSelectProduct={setSelectedProductId} />;
                     case 'models':
-                        return <PlaceholderView title="Experimental Models" icon="flask-round" description="In vivo and in vitro model repository." />;
+                        return <ModelsView onSelectProduct={setSelectedProductId} />;
                     case 'preclinical':
-                        return <PlaceholderView title="Preclinical Hub" icon="microscope" description="Early stage development and pharmacology data." />;
+                        return <PreclinicalView onSelectProduct={setSelectedProductId} />;
                     case 'synthesis':
                         return <PlaceholderView title="Chemical Synthesis" icon="flask-conical" description="Routes, yields, and manufacturing processes." />;
                     case 'clinical':

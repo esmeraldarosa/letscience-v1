@@ -140,6 +140,32 @@ def get_all_patents(session: Session = Depends(get_session)):
         
     return patents_data
 
+@app.get("/articles/")
+def get_all_articles(session: Session = Depends(get_session)):
+    """
+    Returns a unified list of all scientific articles across all products.
+    """
+    results = session.exec(
+        select(ScientificArticle, Product.name)
+        .join(Product, ScientificArticle.product_id == Product.id)
+    ).all()
+    
+    articles_data = []
+    for article, product_name in results:
+        articles_data.append({
+            "id": article.id,
+            "product_id": article.product_id,
+            "product_name": product_name,
+            "doi": article.doi,
+            "title": article.title,
+            "abstract": article.abstract,
+            "authors": article.authors,
+            "publication_date": article.publication_date,
+            "url": article.url
+        })
+        
+    return articles_data
+
 class LoginRequest(BaseModel):
     username: str
     password: str

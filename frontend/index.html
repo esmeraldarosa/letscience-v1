@@ -274,6 +274,8 @@
                 { id: 'models', label: 'Models', icon: 'flask-round' },
                 { id: 'preclinical', label: 'Preclinical', icon: 'microscope' },
                 { id: 'synthesis', label: 'Synthesis', icon: 'flask-conical' },
+                { id: 'comparison', label: 'Compare', icon: 'git-compare' },
+                { id: 'chat', label: 'Chat w/ Science', icon: 'message-square' },
                 { id: 'clinical', label: 'Clinical', icon: 'hospital' },
             ];
 
@@ -2723,6 +2725,301 @@
             );
         };
 
+        const ChatView = () => {
+            const [messages, setMessages] = useState([
+                { role: 'system', text: 'Hello! I am your AI research assistant. Ask me about clinical trials, patents, or scientific articles. Try "Show me trials for Keytruda" or "Latest patents for Eliquis".' }
+            ]);
+            const [input, setInput] = useState('');
+            const [loading, setLoading] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            useEffect(scrollToBottom, [messages]);
+
+            const handleSend = async (e) => {
+                e.preventDefault();
+                if (!input.trim()) return;
+
+                const userMsg = { role: 'user', text: input };
+                setMessages(prev => [...prev, userMsg]);
+                setInput('');
+                setLoading(true);
+
+                try {
+                    const res = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: userMsg.text })
+                    });
+                    const data = await res.json();
+
+                    const botMsg = {
+                        role: 'system',
+                        text: data.text,
+                        related_data: data.related_data
+                    };
+                    setMessages(prev => [...prev, botMsg]);
+                } catch (e) {
+                    setMessages(prev => [...prev, { role: 'system', text: "Sorry, I encountered an error processing your request." }]);
+                }
+                setLoading(false);
+            };
+
+            return (
+                <div className="flex flex-col h-[calc(100vh-2rem)] max-w-5xl mx-auto p-4 animate-in fade-in duration-500">
+                    <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[80%] rounded-2xl p-4 ${msg.role === 'user'
+                                    ? 'bg-slate-900 text-white rounded-tr-none'
+                                    : 'bg-white border border-slate-200 shadow-sm rounded-tl-none'
+                                    }`}>
+                                    <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.text}</div>
+
+                                    {/* Rich Cards for Data */}
+                                    {msg.related_data && msg.related_data.length > 0 && (
+                                        <div className="mt-4 space-y-2">
+                                            {msg.related_data.map((item, i) => (
+                                                <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${item.type === 'Trial' ? 'bg-orange-100 text-orange-700' :
+                                                            item.type === 'Patent' ? 'bg-purple-100 text-purple-700' :
+                                                                'bg-blue-100 text-blue-700'
+                                                            }`}>
+                                                            {item.type}
+                                                        </span>
+                                                    </div>
+                                                    <div className="font-bold text-slate-800 mb-1">{item.title}</div>
+                                                    <div className="text-slate-500">{item.detail}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {loading && (
+                            <div className="flex justify-start">
+                                <div className="bg-white border border-slate-200 rounded-2xl p-4 rounded-tl-none flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    <form onSubmit={handleSend} className="relative">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Ask about trials, patents, or scientific papers..."
+                            className="w-full p-4 pr-12 rounded-xl border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+                            disabled={loading}
+                        />
+                        <button
+                            type="submit"
+                            disabled={!input.trim() || loading}
+                            className="absolute right-2 top-2 p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <i data-lucide="send" className="w-5 h-5"></i>
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
+        const ComparisonView = () => {
+            const [products, setProducts] = useState([]);
+            const [selectedIds, setSelectedIds] = useState([]);
+            const [comparisonData, setComparisonData] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            useEffect(() => {
+                fetchProducts().then(setProducts);
+            }, []);
+
+            const handleCompare = async () => {
+                if (selectedIds.length < 2) return;
+                setLoading(true);
+                try {
+                    const query = selectedIds.map(id => `ids=${id}`).join('&');
+                    const res = await fetch(`/products/compare?${query}`);
+                    const data = await res.json();
+                    setComparisonData(data);
+                } catch (e) {
+                    console.error("Comparison failed", e);
+                }
+                setLoading(false);
+            };
+
+            const toggleProduct = (id) => {
+                if (selectedIds.includes(id)) {
+                    setSelectedIds(selectedIds.filter(x => x !== id));
+                } else {
+                    if (selectedIds.length < 3) {
+                        setSelectedIds([...selectedIds, id]);
+                    }
+                }
+            };
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [products, selectedIds, comparisonData]);
+
+            return (
+                <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900 mb-2">Competitive Landscape</h2>
+                        <p className="text-slate-500">Side-by-side product comparison.</p>
+                    </div>
+
+                    {/* Selector */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-700 uppercase mb-4">Select Products (Max 3)</h3>
+                        <div className="flex flex-wrap gap-3 mb-6">
+                            {products.map(p => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => toggleProduct(p.id)}
+                                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all flex items-center gap-2 ${selectedIds.includes(p.id)
+                                        ? 'bg-accent text-white border-accent shadow-md'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-accent hover:text-accent'
+                                        }`}
+                                >
+                                    {p.name}
+                                    {selectedIds.includes(p.id) && <span>✓</span>}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={handleCompare}
+                            disabled={selectedIds.length < 2 || loading}
+                            className="bg-slate-900 text-white px-6 py-3 rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {loading ? 'Analyzing...' : 'Generate Comparison'}
+                            <i data-lucide="arrow-right" className="w-4 h-4"></i>
+                        </button>
+                    </div>
+
+                    {/* Results */}
+                    {comparisonData && (
+                        <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-700">
+
+                            {/* 1. Timeline */}
+                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                                <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                                    <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i>
+                                    Strategic Intelligence (Gantt View)
+                                </h3>
+                                <div className="space-y-4 min-w-[600px]">
+                                    {selectedIds.map(id => {
+                                        const prod = products.find(p => p.id === id);
+                                        const events = comparisonData.timeline_events.filter(e => e.product === prod.name);
+                                        return (
+                                            <div key={id} className="relative">
+                                                <div className="flex items-center mb-2">
+                                                    <span className="w-32 font-bold text-slate-700 text-sm truncate pr-4">{prod.name}</span>
+                                                    <div className="flex-1 h-1 bg-slate-100 rounded-full relative items-center flex">
+                                                        {events.map((ev, i) => {
+                                                            // Simple positioning logic based on year (2010-2030 scale)
+                                                            const year = new Date(ev.date).getFullYear();
+                                                            const start = 2010;
+                                                            const end = 2025;
+                                                            const pos = Math.max(0, Math.min(100, ((year - start) / (end - start)) * 100));
+
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    className="absolute w-3 h-3 rounded-full border-2 border-white shadow-sm cursor-help hover:scale-150 transition-transform"
+                                                                    style={{
+                                                                        left: `${pos}%`,
+                                                                        backgroundColor: ev.type === 'Milestone' ? '#8b5cf6' : '#f59e0b'
+                                                                    }}
+                                                                    title={`${ev.date}: ${ev.title}`}
+                                                                ></div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <div className="flex text-xs text-slate-400 pl-32 justify-between">
+                                        <span>2010</span>
+                                        <span>2015</span>
+                                        <span>2020</span>
+                                        <span>2025</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 2. PK Matrix */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                    <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                        <i data-lucide="activity" className="w-5 h-5 text-emerald-500"></i>
+                                        PK Comparison
+                                    </h3>
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
+                                            <tr>
+                                                <th className="px-4 py-3">Parameter</th>
+                                                {comparisonData.products.map(p => (
+                                                    <th key={p.id} className="px-4 py-3">{p.name}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {Object.entries(comparisonData.pk_comparison).map(([param, values]) => (
+                                                <tr key={param} className="hover:bg-slate-50">
+                                                    <td className="px-4 py-3 font-medium text-slate-900">{param}</td>
+                                                    {comparisonData.products.map(p => (
+                                                        <td key={p.id} className="px-4 py-3 text-slate-600">
+                                                            {values[p.name] || '-'}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* 3. Patent Cliffs */}
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                    <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                        <i data-lucide="alert-triangle" className="w-5 h-5 text-red-500"></i>
+                                        Patent Cliffs (Est.)
+                                    </h3>
+                                    <div className="space-y-4">
+                                        {comparisonData.patent_cliffs.map((cliff, i) => (
+                                            <div key={i} className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                                                <div>
+                                                    <h4 className="font-bold text-red-900">{cliff.product}</h4>
+                                                    <p className="text-xs text-red-600 mt-1">{cliff.notes}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-2xl font-bold text-red-700">{cliff.year}</div>
+                                                    <div className="text-xs text-red-500 uppercase font-medium">Expiry</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {comparisonData.patent_cliffs.length === 0 && <p className="text-slate-400 italic">No patent expiry data available.</p>}
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const App = () => {
             const [selectedProductId, setSelectedProductId] = useState(null);
             const [activeView, setActiveView] = useState('drugs'); // drugs, patents, articles, etc.
@@ -2769,6 +3066,10 @@
                         return <PreclinicalView onSelectProduct={setSelectedProductId} />;
                     case 'synthesis':
                         return <SynthesisView onSelectProduct={setSelectedProductId} />;
+                    case 'comparison':
+                        return <ComparisonView />;
+                    case 'chat':
+                        return <ChatView />;
                     case 'clinical':
                         return <ClinicalView onSelectProduct={setSelectedProductId} />;
                     default:

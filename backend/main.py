@@ -5,7 +5,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 from .models import (
     Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
-    ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme
+    ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
+    ProductMilestone
 )
 from .auth import (
     hash_password, verify_password, 
@@ -113,6 +114,118 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
     }
 
 
+from fastapi import Query
+
+@app.get("/products/compare")
+def compare_products(ids: List[int] = Query(..., description="List of product IDs to compare"), session: Session = Depends(get_session)):
+    """
+    Returns aggregated data for comparing multiple products side-by-side.
+    """
+    # Fetch all requested products
+    products = session.exec(select(Product).where(Product.id.in_(ids))).all()
+    
+    if not products:
+        return {"products": [], "message": "No products found"}
+
+    # Base Product Info
+    products_info = []
+    for p in products:
+        products_info.append({
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "phase": p.development_phase,
+            "target": p.target_indication
+        })
+    
+    # Pharmacokinetics Pivot
+    # Structure: { "Tmax": { "Product A": "2h", "Product B": "4h" }, ... }
+    pk_data = {}
+    # First, gather all unique parameters existing across these products
+    all_pks = session.exec(select(ProductPharmacokinetics).where(ProductPharmacokinetics.product_id.in_(ids))).all()
+    
+    for pk in all_pks:
+        if pk.parameter not in pk_data:
+            pk_data[pk.parameter] = {}
+        # Find product name for this pk
+        p_name = next((p.name for p in products if p.id == pk.product_id), "Unknown")
+        pk_data[pk.parameter][p_name] = f"{pk.value} {pk.unit or ''}".strip()
+        
+    # Timeline Events (Milestones + Trials)
+    timeline_events = []
+    
+    # 1. Milestones
+    milestones = session.exec(select(ProductMilestone).where(ProductMilestone.product_id.in_(ids))).all()
+    for m in milestones:
+        p_name = next((p.name for p in products if p.id == m.product_id), "Unknown")
+        timeline_events.append({
+            "product": p_name,
+            "date": m.date,
+            "type": "Milestone",
+            "title": m.event,
+            "phase": m.phase
+        })
+        
+    # 2. Trials
+    # 2. Trials
+    trials = session.exec(select(ClinicalTrial).where(ClinicalTrial.product_id.in_(ids))).all()
+    for t in trials:
+        if t.start_date: # Only include if we have a date
+            p_name = next((p.name for p in products if p.id == t.product_id), "Unknown")
+            
+            # Estimate end date if missing (Phase 1=1yr, Ph2=2yr, Ph3=3yr)
+            end = t.completion_date
+            if not end:
+                duration_days = 365
+                if "Phase 2" in t.phase: duration_days = 730
+                if "Phase 3" in t.phase: duration_days = 1095
+                end = t.start_date.replace(year=t.start_date.year + (duration_days // 365)) # Rough approx
+                
+            timeline_events.append({
+                "product": p_name,
+                "date": t.start_date,
+                "end_date": end,
+                "type": "Trial Start",
+                "title": t.title,
+                "phase": t.phase
+            })
+            
+    # Sort by date
+    timeline_events.sort(key=lambda x: x["date"])
+    
+    # Earliest Patent Expiry per Product (Approximation)
+    patent_cliffs = []
+    patents = session.exec(select(Patent).where(Patent.product_id.in_(ids))).all()
+    
+    # Group by product
+    from collections import defaultdict
+    prod_patents = defaultdict(list)
+    for pat in patents:
+        prod_patents[pat.product_id].append(pat)
+        
+    for p in products:
+        # Estimate: +20 years from earliest filing/publication (very rough proxy using publication date for demo)
+        if prod_patents[p.id]:
+            # Use the latest publication date + 20 years as a simple proxy for "cliff"
+            # In reality, you'd use filing date, but we have pub date
+            sorted_pats = sorted(prod_patents[p.id], key=lambda x: x.publication_date or datetime.min, reverse=True)
+            if sorted_pats and sorted_pats[0].publication_date:
+                latest_pub = sorted_pats[0].publication_date
+                expiry_est = latest_pub.year + 20 
+                patent_cliffs.append({
+                    "product": p.name,
+                    "year": expiry_est, 
+                    "notes": "Estimated ~20 years from latest patent pub."
+                })
+
+    return {
+        "products": products_info,
+        "pk_comparison": pk_data,
+        "timeline_events": timeline_events,
+        "patent_cliffs": patent_cliffs
+    }
+
+
 # Import connector
 from .pubmed_connector import fetch_pubmed_articles
 from datetime import datetime
@@ -171,6 +284,136 @@ async def refresh_product_articles(product_id: int, session: Session = Depends(g
         "message": f"Successfully refreshed data. Added {added_count} new articles.",
         "articles_found": len(articles_data),
         "articles_added": added_count
+    }
+
+class ChatRequest(BaseModel):
+    query: str
+    context_product_id: Optional[int] = None
+
+@app.post("/chat")
+def chat_with_science(request: ChatRequest, session: Session = Depends(get_session)):
+    """
+    Deterministic RAG-lite endpoint.
+    Parses query for keywords and intents, searches DB, constructs a response.
+    """
+    q = request.query.lower()
+    
+    # Brand Name Mapping (Simple Dictionary for MVP)
+    brand_map = {
+        "keytruda": "pembrolizumab",
+        "opdivo": "nivolumab", 
+        "humira": "adalimumab",
+        "ozempic": "semaglutide",
+        "wegovy": "semaglutide",
+        "eliquis": "apixaban"
+    }
+    
+    # Replace brands in query with generics
+    for brand, generic in brand_map.items():
+        if brand in q:
+            q = q.replace(brand, generic)
+
+    # Intent 1: Comparatives (If users ask here instead of using the view)
+    if "compare" in q or "vs" in q:
+        return {
+            "text": "For detailed comparisons, please use the 'Compare' tab in the sidebar. I can help you find specific data points here though!",
+            "related_data": []
+        }
+
+    # Intent 2: Specific Data Search
+    # Keywords: trial, patent, article, paper, study, side effect
+    
+    response_text = "I couldn't find specific data matching your query."
+    related_data = [] # List of dicts { title, type, detail }
+    
+    products = session.exec(select(Product)).all()
+    # Identify Product in Query
+    target_product = None
+    if request.context_product_id:
+         target_product = session.get(Product, request.context_product_id)
+    else:
+        for p in products:
+            if p.name.lower() in q:
+                target_product = p
+                break
+    
+    if not target_product and not "all" in q:
+         return {
+            "text": "Could you specify which product you are asking about? (e.g., 'Keytruda trials')",
+            "related_data": []
+        }
+
+    p_id = target_product.id if target_product else None
+    p_name = target_product.name if target_product else "all products"
+
+    # Sub-intent: Clinical Trials
+    if "trial" in q or "clinical" in q or "phase" in q:
+        query = select(ClinicalTrial)
+        if p_id:
+            query = query.where(ClinicalTrial.product_id == p_id)
+        
+        # Filter by phase if mentioned
+        if "phase 1" in q: query = query.where(ClinicalTrial.phase == "Phase 1")
+        elif "phase 2" in q: query = query.where(ClinicalTrial.phase == "Phase 2")
+        elif "phase 3" in q: query = query.where(ClinicalTrial.phase == "Phase 3")
+        
+        results = session.exec(query).all()
+        count = len(results)
+        response_text = f"I found {count} clinical trials for {p_name}."
+        for t in results[:5]: # Top 5
+            related_data.append({
+                "type": "Trial",
+                "title": t.title,
+                "detail": f"{t.phase} - {t.status} ({t.start_date})"
+            })
+
+    # Sub-intent: Patents
+    elif "patent" in q or "ip" in q or "expiry" in q:
+        query = select(Patent)
+        if p_id: 
+            query = query.where(Patent.product_id == p_id)
+        
+        results = session.exec(query).all()
+        count = len(results)
+        response_text = f"I found {count} patents related to {p_name}."
+        for p in results[:5]:
+            related_data.append({
+                "type": "Patent",
+                "title": p.title,
+                "detail": f"{p.patent_type} - {p.status}"
+            })
+
+    # Sub-intent: Scientific Articles
+    elif "article" in q or "paper" in q or "study" in q or "publication" in q:
+        query = select(ScientificArticle)
+        if p_id:
+            query = query.where(ScientificArticle.product_id == p_id)
+        
+        results = session.exec(query).all()
+        count = len(results)
+        response_text = f"There are {count} scientific articles associated with {p_name}."
+        for a in results[:5]:
+            related_data.append({
+                "type": "Article",
+                "title": a.title,
+                "detail": f"{a.authors} ({a.publication_date.year if a.publication_date else 'N/A'})"
+            })
+            
+    # Sub-intent: General Info / Description
+    elif "what is" in q or "description" in q or "mechanism" in q:
+        if target_product:
+            response_text = f"**{target_product.name}** is currently in **{target_product.development_phase}** for **{target_product.target_indication}**.\n\n{target_product.description}"
+        
+    else:
+        # Fallback search across everything for the product
+        if target_product:
+             response_text = f"Showing general intelligence for {target_product.name}. Please ask about 'trials', 'patents', or 'articles' for more specific lists."
+             related_data.append({"type": "Info", "title": "Development Phase", "detail": target_product.development_phase})
+             related_data.append({"type": "Info", "title": "Indication", "detail": target_product.target_indication})
+
+    return {
+        "text": response_text,
+        "related_data": related_data
     }
 
 # =====================

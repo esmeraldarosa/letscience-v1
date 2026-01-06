@@ -81,6 +81,7 @@ class ClinicalTrial(SQLModel, table=True):
     status: str
     phase: str
     start_date: Optional[datetime] = None
+    completion_date: Optional[datetime] = None # Added for Gantt Chart
     sponsor: Optional[str] = None
     url: Optional[str]
     

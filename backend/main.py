@@ -835,3 +835,31 @@ def get_all_synthesis(session: Session = Depends(get_session)):
     return schemes_data
 
 # Force reload for schema update
+# --- Reporting ---
+from backend.report_generator import create_dossier
+from fastapi.responses import StreamingResponse
+import io
+
+@app.get("/products/{product_id}/dossier")
+def download_dossier(product_id: int):
+    with Session(engine) as session:
+        product = session.get(Product, product_id)
+        if not product:
+            return {"error": "Product not found"}
+            
+        trials = session.exec(select(ClinicalTrial).where(ClinicalTrial.product_id == product_id)).all()
+        patents = session.exec(select(Patent).where(Patent.product_id == product_id)).all()
+        articles = session.exec(select(ScientificArticle).where(ScientificArticle.product_id == product_id)).all()
+        
+        pdf = create_dossier(product, trials, patents, articles)
+        
+        # Output to stream
+        pdf_buffer = io.BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+        
+        return StreamingResponse(
+            pdf_buffer, 
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={product.name}_Dossier.pdf"}
+        )

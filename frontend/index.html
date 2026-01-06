@@ -1749,6 +1749,15 @@
                             >
                                 {isSubscribed ? '🔔 Subscribed' : '🔕 Get Alerts'}
                             </button>
+
+                            {/* Download PDF Button */}
+                            <button
+                                onClick={() => window.open(`/products/${productId}/dossier`, '_blank')}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-red-600"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><path d="M12 18v-6" /><path d="m9 15 3 3 3-3" /></svg>
+                                PDF Report
+                            </button>
                         </div>
                         {/* Tabs */}
                         <div className="container mx-auto px-4 mt-4 flex gap-6 overflow-x-auto">
@@ -2917,46 +2926,83 @@
                                     <i data-lucide="bar-chart-2" className="w-5 h-5 text-accent"></i>
                                     Strategic Intelligence (Gantt View)
                                 </h3>
-                                <div className="space-y-4 min-w-[600px]">
-                                    {selectedIds.map(id => {
-                                        const prod = products.find(p => p.id === id);
-                                        const events = comparisonData.timeline_events.filter(e => e.product === prod.name);
-                                        return (
-                                            <div key={id} className="relative">
-                                                <div className="flex items-center mb-2">
-                                                    <span className="w-32 font-bold text-slate-700 text-sm truncate pr-4">{prod.name}</span>
-                                                    <div className="flex-1 h-1 bg-slate-100 rounded-full relative items-center flex">
-                                                        {events.map((ev, i) => {
-                                                            // Simple positioning logic based on year (2010-2030 scale)
-                                                            const year = new Date(ev.date).getFullYear();
-                                                            const start = 2010;
-                                                            const end = 2025;
-                                                            const pos = Math.max(0, Math.min(100, ((year - start) / (end - start)) * 100));
+                                <div className="min-w-[700px]">
+                                    {/* X-Axis Scale */}
+                                    <div className="flex text-xs font-bold text-slate-400 pl-32 mb-2 border-b border-slate-100 pb-2 relative h-6">
+                                        {[2015, 2020, 2025, 2030, 2035].map(year => {
+                                            const left = ((year - 2015) / (2035 - 2015)) * 100;
+                                            return (
+                                                <span key={year} className="absolute transform -translate-x-1/2" style={{ left: `${left}%` }}>
+                                                    {year}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
 
-                                                            return (
-                                                                <div
-                                                                    key={i}
-                                                                    className="absolute w-3 h-3 rounded-full border-2 border-white shadow-sm cursor-help hover:scale-150 transition-transform"
-                                                                    style={{
-                                                                        left: `${pos}%`,
-                                                                        backgroundColor: ev.type === 'Milestone' ? '#8b5cf6' : '#f59e0b'
-                                                                    }}
-                                                                    title={`${ev.date}: ${ev.title}`}
-                                                                ></div>
-                                                            );
-                                                        })}
+                                    <div className="space-y-6">
+                                        {selectedIds.map(id => {
+                                            const prod = products.find(p => p.id === id);
+                                            const events = comparisonData.timeline_events.filter(e => e.product === prod.name);
+                                            const cliff = comparisonData.patent_cliffs.find(c => c.product === prod.name);
+
+                                            return (
+                                                <div key={id} className="relative group">
+                                                    <div className="flex items-center mb-2">
+                                                        <span className="w-32 font-bold text-slate-700 text-sm truncate pr-4">{prod.name}</span>
+                                                        <div className="flex-1 h-32 bg-slate-50 rounded-lg relative border border-slate-100">
+
+                                                            {/* Grid Lines */}
+                                                            {[2020, 2025, 2030].map(year => (
+                                                                <div key={year} className="absolute top-0 bottom-0 border-l border-slate-200 border-dashed"
+                                                                    style={{ left: `${((year - 2015) / (2035 - 2015)) * 100}%` }}></div>
+                                                            ))}
+
+                                                            {/* Patent Cliff Line */}
+                                                            {cliff && (
+                                                                <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 border-l-2 border-red-500 border-dotted z-10 flex flex-col items-center"
+                                                                    style={{ left: `${((cliff.year - 2015) / (2035 - 2015)) * 100}%` }}>
+                                                                    <div className="bg-red-500 text-white text-[10px] px-1 py-0.5 rounded mt-1 shadow-sm whitespace-nowrap">
+                                                                        LoE {cliff.year}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Gantt Bars */}
+                                                            {events.map((ev, i) => {
+                                                                if (ev.type !== 'Trial Start') return null;
+
+                                                                const startYear = new Date(ev.date).getFullYear();
+                                                                const endYear = ev.end_date ? new Date(ev.end_date).getFullYear() : startYear + 2;
+
+                                                                const startPos = Math.max(0, ((startYear - 2015) / (2035 - 2015)) * 100);
+                                                                const endPos = Math.min(100, ((endYear - 2015) / (2035 - 2015)) * 100);
+                                                                const width = endPos - startPos;
+
+                                                                const color = ev.phase.includes('3') ? 'bg-purple-500' :
+                                                                    ev.phase.includes('2') ? 'bg-blue-400' : 'bg-slate-400';
+
+                                                                return (
+                                                                    <div
+                                                                        key={i}
+                                                                        className={`absolute h-4 rounded shadow-sm opacity-80 hover:opacity-100 transition-all cursor-help ${color}`}
+                                                                        style={{
+                                                                            left: `${startPos}%`,
+                                                                            width: `${width}%`,
+                                                                            top: `${(i % 3) * 25 + 10}px`
+                                                                        }}
+                                                                        title={`${ev.title} (${ev.phase}) 
+Start: ${ev.date}`}
+                                                                    ></div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
-                                    <div className="flex text-xs text-slate-400 pl-32 justify-between">
-                                        <span>2010</span>
-                                        <span>2015</span>
-                                        <span>2020</span>
-                                        <span>2025</span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
+
                             </div>
 
                             {/* 2. PK Matrix */}

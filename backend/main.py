@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from .models import (
     Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
     ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
-    ProductMilestone
+    Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
+    ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
+    ProductMilestone, ProductIndication
 )
 from .auth import (
     hash_password, verify_password, 
@@ -851,7 +853,11 @@ def download_dossier(product_id: int):
         patents = session.exec(select(Patent).where(Patent.product_id == product_id)).all()
         articles = session.exec(select(ScientificArticle).where(ScientificArticle.product_id == product_id)).all()
         
-        pdf = create_dossier(product, trials, patents, articles)
+        milestones = session.exec(select(ProductMilestone).where(ProductMilestone.product_id == product_id)).all()
+        synthesis_schemes = session.exec(select(ProductSynthesisScheme).where(ProductSynthesisScheme.product_id == product_id)).all()
+        indications = session.exec(select(ProductIndication).where(ProductIndication.product_id == product_id)).all()
+        
+        pdf = create_dossier(product, trials, patents, articles, milestones, synthesis_schemes, indications)
         
         # Output to stream
         pdf_buffer = io.BytesIO()
@@ -863,3 +869,82 @@ def download_dossier(product_id: int):
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={product.name}_Dossier.pdf"}
         )
+
+from backend.report_generator import create_landscape_dossier
+
+@app.get("/reports/landscape")
+def generate_landscape_report(
+    type: str = Query(..., description="Report type: disease, target, company, mechanism"),
+    query: str = Query(..., description="Search query"),
+    session: Session = Depends(get_session)
+):
+    """
+    Generates an aggregated Landscape Report PDF.
+    """
+    # 1. Find Products
+    products = []
+    
+    if type.lower() == "disease":
+        # Search Indications and Target Indication
+        # Get IDs from ProductIndication
+        ind_Product_ids = session.exec(select(ProductIndication.product_id).where(ProductIndication.disease_name.contains(query))).all()
+        # Get Products matching target_indication
+        prod_results = session.exec(select(Product).where(Product.target_indication.contains(query))).all()
+        
+        # Combine
+        all_ids = set(ind_Product_ids) | set([p.id for p in prod_results])
+        if all_ids:
+            products = session.exec(select(Product).where(Product.id.in_(all_ids))).all()
+            
+    elif type.lower() == "target":
+        # Search PD targets and Product Description (heuristic)
+        pd_ids = session.exec(select(ProductPharmacodynamics.product_id).where(ProductPharmacodynamics.target.contains(query))).all()
+        prod_results = session.exec(select(Product).where(Product.description.contains(query))).all()
+        
+        all_ids = set(pd_ids) | set([p.id for p in prod_results])
+        if all_ids:
+            products = session.exec(select(Product).where(Product.id.in_(all_ids))).all()
+            
+    elif type.lower() == "company":
+        # Infer from Sponsors and Assignees
+        trial_ids = session.exec(select(ClinicalTrial.product_id).where(ClinicalTrial.sponsor.contains(query))).all()
+        patent_ids = session.exec(select(Patent.product_id).where(Patent.assignee.contains(query))).all()
+        
+        all_ids = set(trial_ids) | set(patent_ids)
+        if all_ids:
+            products = session.exec(select(Product).where(Product.id.in_(all_ids))).all()
+            
+    elif type.lower() == "mechanism":
+        # Heuristic search in description
+        products = session.exec(select(Product).where(Product.description.contains(query))).all()
+        
+    elif type.lower() in ["drug", "drugs", "product", "products"]:
+        products = session.exec(select(Product).where(Product.name.contains(query))).all()
+
+        
+    if not products:
+        # Return 404 or empty report? Let's return error for now
+        return JSONResponse(status_code=404, content={"message": f"No products found for {type}: {query}"})
+        
+    # 2. Gather Data for ALL products
+    product_ids = [p.id for p in products]
+    
+    all_trials = session.exec(select(ClinicalTrial).where(ClinicalTrial.product_id.in_(product_ids))).all()
+    all_patents = session.exec(select(Patent).where(Patent.product_id.in_(product_ids))).all()
+    all_milestones = session.exec(select(ProductMilestone).where(ProductMilestone.product_id.in_(product_ids))).all()
+    
+    # 3. Generate PDF
+    pdf = create_landscape_dossier(type.capitalize(), query, products, all_trials, all_patents, all_milestones)
+    
+    # 4. Stream Response
+    pdf_buffer = io.BytesIO()
+    pdf.output(pdf_buffer)
+    pdf_buffer.seek(0)
+    
+    filename = f"Landscape_{type}_{query}.pdf".replace(" ", "_")
+    
+    return StreamingResponse(
+        pdf_buffer, 
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

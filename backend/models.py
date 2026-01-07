@@ -207,3 +207,12 @@ class AlertSubscription(SQLModel, table=True):
     class Config:
         # Unique constraint: one subscription per user per product
         pass
+
+class DrugInteraction(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    drug_a_id: int = Field(foreign_key="product.id")
+    drug_b_id: int = Field(foreign_key="product.id")
+    
+    interaction_type: str # "Synergy", "Antagonism", etc.
+    effect_description: str
+    severity: str # "High", "Moderate", "Low"

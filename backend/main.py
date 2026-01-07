@@ -948,3 +948,54 @@ def generate_landscape_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+# ==========================
+# Analysis Endpoints
+# ==========================
+
+from pydantic import BaseModel
+from backend.analysis import analyze_combination
+
+class CombinationRequest(BaseModel):
+    drug_a_id: int
+    drug_b_id: int
+
+@app.post("/analysis/combine")
+def analyze_drug_combination(
+    request: CombinationRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Analyzes potential interactions (synergy, toxicity) between two drugs.
+    """
+    result = analyze_combination(session, request.drug_a_id, request.drug_b_id)
+    
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+        
+    return result
+
+@app.post("/analysis/report")
+def generate_analysis_report(
+    request: CombinationRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Generates a PDF brief of the interaction analysis.
+    """
+    from backend.report_generator import create_combination_brief
+    import io
+
+    # 1. Run Analysis
+    result = analyze_combination(session, request.drug_a_id, request.drug_b_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    # 2. Generate PDF
+    pdf_bytes = create_combination_brief(result)
+    
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Analysis_{result['drug_a']['name']}_vs_{result['drug_b']['name']}.pdf"}
+    )

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlmodel import SQLModel, Session, create_engine, select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from pydantic import BaseModel
 from .models import (
@@ -8,7 +9,7 @@ from .models import (
     ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
     Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
     ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
-    ProductMilestone, ProductIndication
+    ProductMilestone, ProductIndication, ProductRead
 )
 from .auth import (
     hash_password, verify_password, 
@@ -79,9 +80,13 @@ def create_product(product: Product, session: Session = Depends(get_session)):
     session.refresh(product)
     return product
 
-@app.get("/products/", response_model=List[Product])
+@app.get("/products/", response_model=List[ProductRead])
 def read_products(session: Session = Depends(get_session)):
-    products = session.exec(select(Product)).all()
+    # Explicitly load indications
+    statement = select(Product).options(
+        selectinload(Product.indications)
+    )
+    products = session.exec(statement).all()
     return products
 
 @app.get("/products/{product_id}/intelligence")
@@ -226,6 +231,18 @@ def compare_products(ids: List[int] = Query(..., description="List of product ID
         "timeline_events": timeline_events,
         "patent_cliffs": patent_cliffs
     }
+
+from .analysis import analyze_combination
+
+@app.get("/analysis/combination")
+def get_combination_analysis(drug_a: int, drug_b: int, session: Session = Depends(get_session)):
+    """
+    Simulates interaction analysis between two drugs.
+    """
+    result = analyze_combination(session, drug_a, drug_b)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
 # Import connector
@@ -449,7 +466,10 @@ def get_all_patents(session: Session = Depends(get_session)):
             "url": patent.url,
             "claim_summary": patent.claim_summary,
             "patent_type": patent.patent_type,
-            "diseases_in_claims": patent.diseases_in_claims
+            "claim_summary": patent.claim_summary,
+            "patent_type": patent.patent_type,
+            "diseases_in_claims": patent.diseases_in_claims,
+            "expiry_date": patent.expiry_date
         })
         
     return patents_data
@@ -780,6 +800,33 @@ def get_my_subscriptions(user: User = Depends(get_current_user), session: Sessio
     product_ids = [s.product_id for s in subscriptions]
     products = session.exec(select(Product).where(Product.id.in_(product_ids))).all() if product_ids else []
     
+# =====================
+# Report Generation Endpoints
+# =====================
+
+from .report_generator import create_dossier, create_landscape_dossier, create_combination_brief, create_patentability_study
+
+@app.get("/products/{product_id}/patentability/report")
+def get_patentability_report(product_id: int, session: Session = Depends(get_session)):
+    """
+    Generates and returns a PDF Patentability Study for the product.
+    """
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    patents = session.exec(select(Patent).where(Patent.product_id == product_id)).all()
+    
+    # Generate PDF
+    pdf_bytes = create_patentability_study(product, patents)
+    
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename={product.name}_Patentability_Study.pdf"
+    })
+
+# =====================
+# Clinical Trials Endpoint
+# =====================
 @app.get("/clinical/")
 def get_all_clinical_trials(session: Session = Depends(get_session)):
     """
@@ -999,3 +1046,21 @@ def generate_analysis_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Analysis_{result['drug_a']['name']}_vs_{result['drug_b']['name']}.pdf"}
     )
+
+# =====================
+# Prediction Endpoints
+# =====================
+
+from .prediction import predict_trial_outcome, TrialParams, PredictionResult
+
+@app.post("/prediction/trial-success", response_model=PredictionResult)
+def predict_success(params: TrialParams):
+    """
+    Predicts the Probability of Success (PoS) for a clinical trial.
+    """
+    # For now, we allow unauthenticated access for the demo
+    # if not user:
+    #     raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    return predict_trial_outcome(params)
+

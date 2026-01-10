@@ -1,5 +1,6 @@
 from sqlmodel import Session, create_engine, select, SQLModel
 from models import Product, ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel
+from datetime import datetime
 import os
 
 sqlite_file_name = "database.db"
@@ -41,7 +42,7 @@ def seed_science():
                     {"name": "Recombinant Manufacturing", "desc": "Production in CHO cells followed by Protein A purification.", "img": None}
                 ],
                 "patents": [
-                    {"title": "Anti-PD-1 Antibodies", "source_id": "US8354509", "type": "Composition of Matter", "claims": "Monoclonal antibody that binds PD-1 with high affinity.", "diseases": "Cancer", "url": "https://patents.google.com/patent/US8354509B2/en"}
+                    {"title": "Anti-PD-1 Antibodies", "source_id": "US8354509", "type": "Composition of Matter", "claims": "Monoclonal antibody that binds PD-1 with high affinity.", "diseases": "Cancer", "url": "https://patents.google.com/patent/US8354509B2/en", "expiry": datetime(2028, 6, 15)}
                 ],
                 "articles": [
                     {"title": "Safety and Activity of Pembrolizumab in Tumors with MMR Deficiency", "doi": "10.1056/NEJMoa1503093", "authors": "Le et al.", "date": "2015-06-25", "desc": "Pivotal study showing efficacy in MMR-deficient tumors.", "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa1503093"}
@@ -71,7 +72,7 @@ def seed_science():
                     {"name": "Biologics Production", "desc": "Fermentation in mammalian cell culture.", "img": None}
                 ],
                 "patents": [
-                    {"title": "Human TNF-alpha antibodies", "source_id": "US6090382", "type": "Composition of Matter", "claims": "Isolated human antibody that binds to human TNF-alpha.", "diseases": "Rheumatoid Arthritis", "url": "https://patents.google.com/patent/US6090382A/en"}
+                    {"title": "Human TNF-alpha antibodies", "source_id": "US6090382", "type": "Composition of Matter", "claims": "Isolated human antibody that binds to human TNF-alpha.", "diseases": "Rheumatoid Arthritis", "url": "https://patents.google.com/patent/US6090382A/en", "expiry": datetime(2018, 10, 15)}
                 ],
                 "articles": [
                     {"title": "Adalimumab for Rheumatoid Arthritis", "doi": "10.1056/NEJMoa021573", "authors": "Weinblatt et al.", "date": "2003-01-01", "desc": "Adalimumab showed significant improvement in RA symptoms.", "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa021573"}
@@ -101,7 +102,7 @@ def seed_science():
                     {"name": "SPPS + Recombinant", "desc": "Yeast expression of backbone + Synthetic addition of fatty acid side chain.", "img": None}
                 ],
                 "patents": [
-                    {"title": "GLP-1 Derivatives", "source_id": "US8129343", "type": "Composition of Matter", "claims": "Acylated GLP-1 analogs with extended half-life.", "diseases": "Diabetes, Obesity", "url": "https://patents.google.com/patent/US8129343B2/en"}
+                    {"title": "GLP-1 Derivatives", "source_id": "US8129343", "type": "Composition of Matter", "claims": "Acylated GLP-1 analogs with extended half-life.", "diseases": "Diabetes, Obesity", "url": "https://patents.google.com/patent/US8129343B2/en", "expiry": datetime(2031, 2, 20)}
                 ],
                 "articles": [
                     {"title": "Semaglutide and Cardiovascular Outcomes in Patients with Type 2 Diabetes", "doi": "10.1056/NEJMoa1607141", "authors": "Marso et al.", "date": "2016-11-10", "desc": "Significant reduction in cardiovascular risk.", "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa1607141"}
@@ -126,7 +127,7 @@ def seed_science():
                     {"name": "Convergent Synthesis", "desc": "Coupling of chloro-lactam intermediate with pyrazole-amine fragment.", "img": "/static/apixaban_synthesis.png", "source_url": "https://go.drugbank.com/drugs/DB06605"}
                 ],
                 "patents": [
-                    {"title": "Factor Xa Inhibitors", "source_id": "US6967208", "type": "Composition of Matter", "claims": "Nitrogen containing heterobicyclic compounds as Factor Xa inhibitors.", "diseases": "Thrombosis", "url": "https://patents.google.com/patent/US6967208B2/en"}
+                    {"title": "Factor Xa Inhibitors", "source_id": "US6967208", "type": "Composition of Matter", "claims": "Nitrogen containing heterobicyclic compounds as Factor Xa inhibitors.", "diseases": "Thrombosis", "url": "https://patents.google.com/patent/US6967208B2/en", "expiry": datetime(2031, 11, 24)}
                 ],
                 "articles": [
                     {"title": "Apixaban versus Warfarin in Patients with Atrial Fibrillation", "doi": "10.1056/NEJMoa1107039", "authors": "Granger et al.", "date": "2011-09-15", "desc": "Superiority of Apixaban over Warfarin in stroke prevention.", "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa1107039"}
@@ -203,7 +204,6 @@ def seed_science():
             
             # Seed Synthesis (NEW)
             from models import ProductSynthesisScheme, Patent, ScientificArticle, Conference
-            from datetime import datetime
             
             existing_schemes = session.exec(select(ProductSynthesisScheme).where(ProductSynthesisScheme.product_id == product.id)).all()
             if not existing_schemes and data.get("synthesis"):
@@ -229,7 +229,8 @@ def seed_science():
                         diseases_in_claims=item["diseases"],
                         url=item["url"],
                         status="Active",
-                        publication_date=datetime.now() # Mock date
+                        publication_date=datetime.now(), # Mock date
+                        expiry_date=item.get("expiry") # NEW
                     ))
 
             # Seed Articles

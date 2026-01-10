@@ -56,6 +56,7 @@ class Patent(SQLModel, table=True):
     claim_summary: Optional[str] = None  # Summary of key claims
     diseases_in_claims: Optional[str] = None  # Comma-separated diseases from claims
     patent_type: Optional[str] = None  # "Product", "Combination", "Use"
+    expiry_date: Optional[datetime] = None
     
     product: Optional[Product] = Relationship(back_populates="patents")
 
@@ -137,6 +138,10 @@ class ProductSynthesisScheme(SQLModel, table=True):
     
     product: Optional[Product] = Relationship(back_populates="synthesis_schemes")
 
+class ProductRead(ProductBase):
+    id: int
+    target_indication: Optional[str] = None
+    indications: List["ProductIndication"] = []
 class ProductPharmacokinetics(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     product_id: Optional[int] = Field(default=None, foreign_key="product.id")

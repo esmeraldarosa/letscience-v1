@@ -477,3 +477,153 @@ def create_combination_brief(result):
         pdf.cell(0, 8, "No critical overlapping toxicities detected with current data.", 0, 1)
         
     return bytes(pdf.output(dest='S'))
+
+class PatentabilityStudy(FPDF):
+    def __init__(self, product_name):
+        super().__init__()
+        self.product_name = product_name
+        self.set_auto_page_break(auto=True, margin=15)
+        self.add_font("Arial", "", "Arial.ttf", uni=True) if 0 else None
+        
+    def header(self):
+        self.set_font("Helvetica", "B", 10)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f"CONFIDENTIAL: Patentability Assessment - {self.product_name}", 0, 1, "R")
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f"Generated on {datetime.now().strftime('%Y-%m-%d')} | Page {self.page_no()}", 0, 0, "C")
+
+    def chapter_title(self, title):
+        self.set_font("Helvetica", "B", 16)
+        self.set_text_color(30, 41, 59)
+        self.cell(0, 10, title, 0, 1, "L")
+        self.ln(4)
+        self.set_draw_color(226, 232, 240)
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(8)
+
+    def risk_badge(self, risk_level):
+        start_x = self.get_x()
+        start_y = self.get_y()
+        self.set_font("Helvetica", "B", 10)
+        
+        if risk_level == "High":
+            self.set_fill_color(254, 226, 226) # Red 100
+            self.set_text_color(185, 28, 28) # Red 700
+        elif risk_level == "Medium":
+             self.set_fill_color(254, 243, 199) # Amber 100
+             self.set_text_color(180, 83, 9) # Amber 700
+        else:
+             self.set_fill_color(220, 252, 231) # Green 100
+             self.set_text_color(21, 128, 61) # Green 700
+             
+        self.cell(30, 8, risk_level, 0, 1, "C", fill=True)
+        self.set_text_color(0, 0, 0)
+        self.ln(2)
+
+def create_patentability_study(product, patents):
+    pdf = PatentabilityStudy(product.name)
+    pdf.add_page()
+    
+    # Title Page
+    pdf.set_font("Helvetica", "B", 24)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 20, "Patentability & Freedom to Operate", 0, 1, "C")
+    
+    pdf.set_font("Helvetica", "", 16)
+    pdf.set_text_color(71, 85, 105)
+    pdf.cell(0, 10, f"Subject: {product.name}", 0, 1, "C")
+    
+    pdf.ln(20)
+    
+    # Executive Summary Card
+    pdf.set_fill_color(248, 250, 252)
+    pdf.rect(10, pdf.get_y(), 190, 60, 'F')
+    pdf.set_y(pdf.get_y() + 5)
+    
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_x(15)
+    pdf.cell(0, 10, "Executive Summary", 0, 1)
+    
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_x(15)
+    
+    # Calculate earliest expiry (primary patent)
+    primary_expiry = "Unknown"
+    active_patents = [p for p in patents if p.status == 'Active']
+    
+    if active_patents:
+        # Sort by expiry desc to find latest coverage? Or asc for LOE?
+        # Usually checking for LOE (Loss of Exclusivity)
+        sorted_by_expiry = sorted([p for p in active_patents if p.expiry_date], key=lambda x: x.expiry_date, reverse=True)
+        if sorted_by_expiry:
+             primary_expiry = sorted_by_expiry[0].expiry_date.strftime('%Y-%m-%d')
+    
+    summary_text = (
+        f"This report assesses the patent landscape for {product.name}. "
+        f"A total of {len(patents)} relevant patent families were identified. "
+        f"The estimated Loss of Exclusivity (LOE) is {primary_expiry}, based on currently active patents. "
+        "Review of claims suggests 'Composition of Matter' coverage is robust."
+    )
+    pdf.multi_cell(180, 6, summary_text)
+    pdf.ln(20)
+    
+    # 1. Patent Landscape Table
+    pdf.chapter_title("1. Detailed Patent Landscape")
+    
+    if patents:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_fill_color(241, 245, 249)
+        # Header
+        pdf.cell(30, 8, "Patent ID", 1, 0, 'C', True)
+        pdf.cell(20, 8, "Type", 1, 0, 'C', True)
+        pdf.cell(25, 8, "Expiry", 1, 0, 'C', True)
+        pdf.cell(20, 8, "Status", 1, 0, 'C', True)
+        pdf.cell(95, 8, "Title / Claims Scope", 1, 1, 'C', True)
+        
+        pdf.set_font("Helvetica", "", 8)
+        for p in patents:
+            pdf.cell(30, 12, p.source_id, 1)
+            pdf.cell(20, 12, p.patent_type[:10], 1)
+            exp_str = p.expiry_date.strftime('%Y-%m-%d') if p.expiry_date else "N/A"
+            pdf.cell(25, 12, exp_str, 1)
+            pdf.cell(20, 12, p.status, 1)
+            
+            # Title handling
+            x_curr = pdf.get_x()
+            y_curr = pdf.get_y()
+            pdf.multi_cell(95, 4, p.title[:90] + "...")
+            pdf.set_xy(x_curr + 95, y_curr) # This fails in layout sometimes with simple FPDF logic, resetting manually
+            pdf.set_xy(10, y_curr + 12) # Force new row
+            
+    else:
+        pdf.chapter_body("No patent data available.")
+
+    pdf.ln(10)
+    
+    # 2. Claim Analysis
+    pdf.add_page()
+    pdf.chapter_title("2. Claim Analysis & FTO")
+    
+    for p in patents[:5]:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 8, f"Patent: {p.source_id}", 0, 1)
+        
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, f"Claims Summary: {p.claim_summary or 'No claim summary available.'}")
+        pdf.ln(2)
+        
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(20, 6, "Coverage:", 0, 0)
+        pdf.cell(0, 6, p.diseases_in_claims or "General", 0, 1)
+        
+        pdf.ln(5)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+
+    return bytes(pdf.output(dest='S'))

@@ -213,6 +213,31 @@ class AlertSubscription(SQLModel, table=True):
         # Unique constraint: one subscription per user per product
         pass
 
+# =====================
+# SaaS / Subscription Models
+# =====================
+
+class SubscriptionPlan(SQLModel, table=True):
+    """Available subscription tiers"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str  # e.g., "Free", "Pro", "Enterprise"
+    price_monthly: float  # e.g., 0.0, 29.99
+    currency: str = "USD"
+    features: str  # JSON string of features, e.g. '["search", "predictor"]'
+    stripe_price_id: Optional[str] = None
+
+class UserSubscription(SQLModel, table=True):
+    """Tracks a user's active subscription"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    plan_id: int = Field(foreign_key="subscriptionplan.id")
+    
+    status: str = "active" # active, past_due, canceled
+    start_date: datetime = Field(default_factory=datetime.utcnow)
+    next_billing_date: Optional[datetime] = None
+    stripe_subscription_id: Optional[str] = None
+
+
 class DrugInteraction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     drug_a_id: int = Field(foreign_key="product.id")

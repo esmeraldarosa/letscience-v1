@@ -9,7 +9,8 @@ from .models import (
     ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
     Product, Patent, ScientificArticle, ClinicalTrial, Conference, User, AlertSubscription,
     ProductPharmacokinetics, ProductPharmacodynamics, ProductExperimentalModel, ProductSynthesisScheme,
-    ProductMilestone, ProductIndication, ProductRead
+    ProductMilestone, ProductIndication, ProductRead,
+    RegulatoryDocument, ClinicalBudget
 )
 from .auth import (
     hash_password, verify_password, 
@@ -1063,4 +1064,233 @@ def predict_success(params: TrialParams):
     #     raise HTTPException(status_code=401, detail="Not authenticated")
     
     return predict_trial_outcome(params)
+
+
+# =====================
+# CTA Management Endpoints
+# =====================
+
+@app.get("/cta/documents", response_model=List[RegulatoryDocument])
+def get_regulatory_documents(session: Session = Depends(get_session)):
+    """List all regulatory documents"""
+    return session.exec(select(RegulatoryDocument)).all()
+
+@app.post("/cta/documents", response_model=RegulatoryDocument)
+def create_regulatory_document(doc: RegulatoryDocument, session: Session = Depends(get_session)):
+    """Create a new regulatory document tracking item"""
+    try:
+        # Pydantic/SQLModel sometimes leaves these as strings if not strictly validated?
+        # Ensure they are datetime objects for SQLite
+        if isinstance(doc.submission_date, str):
+            doc.submission_date = datetime.fromisoformat(doc.submission_date.replace('Z', '+00:00'))
+        if isinstance(doc.expiry_date, str):
+            doc.expiry_date = datetime.fromisoformat(doc.expiry_date.replace('Z', '+00:00'))
+        if isinstance(doc.approval_date, str):
+            doc.approval_date = datetime.fromisoformat(doc.approval_date.replace('Z', '+00:00'))
+            
+        session.add(doc)
+        session.commit()
+        session.refresh(doc)
+        return doc
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.patch("/cta/documents/{doc_id}", response_model=RegulatoryDocument)
+def update_regulatory_document(doc_id: int, updates: dict, session: Session = Depends(get_session)):
+    """Update a regulatory document (e.g. change status)"""
+    doc = session.get(RegulatoryDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Apply updates
+    for key, value in updates.items():
+        if hasattr(doc, key):
+            # parse dates if needed
+            if key in ['submission_date', 'approval_date', 'expiry_date'] and isinstance(value, str):
+                value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            setattr(doc, key, value)
+            
+    session.add(doc)
+    session.commit()
+    session.refresh(doc)
+    return doc
+
+@app.delete("/cta/documents/{doc_id}")
+def delete_regulatory_document(doc_id: int, session: Session = Depends(get_session)):
+    """Delete a regulatory document"""
+    doc = session.get(RegulatoryDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    session.delete(doc)
+    session.commit()
+    return {"ok": True}
+
+@app.get("/cta/budget", response_model=List[ClinicalBudget])
+def get_clinical_budget(session: Session = Depends(get_session)):
+    """List all clinical budget items"""
+    return session.exec(select(ClinicalBudget)).all()
+
+@app.post("/cta/budget", response_model=ClinicalBudget)
+def create_clinical_budget(item: ClinicalBudget, session: Session = Depends(get_session)):
+    """Add a new budget item"""
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+@app.delete("/cta/budget/{item_id}")
+def delete_clinical_budget(item_id: int, session: Session = Depends(get_session)):
+    """Delete a budget item"""
+    item = session.get(ClinicalBudget, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Budget item not found")
+    session.delete(item)
+    session.commit()
+    return {"ok": True}
+
+@app.get("/cta/economic-memory")
+def get_economic_memory(session: Session = Depends(get_session)):
+    """Generate 'Memoria Económica' (Inputs -> Process -> Outputs)"""
+    items = session.exec(select(ClinicalBudget)).all()
+    
+    total_allocated = sum(i.allocated_amount for i in items)
+    total_spent = sum(i.spent_amount for i in items)
+    remaining = total_allocated - total_spent
+    utilization = (total_spent / total_allocated * 100) if total_allocated > 0 else 0
+    
+    return {
+        "summary": {
+            "total_budget": total_allocated,
+            "total_spent": total_spent,
+            "balance": remaining,
+            "utilization_rate": round(utilization, 2)
+        },
+        "sections": {
+            "inputs": [
+                "Protocolo aprobado (v4.0)",
+                f"Propuesta económica del promotor: €{total_allocated:,.2f}",
+                "Precios públicos de referencia (ICS/SERMAS)",
+                "Regulaciones de contratación pública (Ley 9/2017)"
+            ],
+            "process": [
+                "Estrategia de evaluación económica (Crecimiento Sistemático)",
+                "Análisis de costes de sostenibilidad",
+                "Verificación de actividades vs Protocolo",
+                "Validación de propuesta económica con Investigador Principal"
+            ],
+            "outputs": [
+                "Memoria económica de coste (Generada)",
+                "Contrato de servicios (Compras, RRHH, IDI)",
+                "Mejoras del proceso de evaluación identificadas"
+            ]
+        },
+        "items": items
+    }
+
+@app.get("/cta/process-improvements")
+def get_process_improvements(session: Session = Depends(get_session)):
+    """Analyze budget and suggest 'Mejoras del proceso'"""
+    items = session.exec(select(ClinicalBudget)).all()
+    suggestions = []
+    
+    # 1. Check for Overspending
+    overbudget_sites = [i for i in items if i.spent_amount > i.allocated_amount]
+    if overbudget_sites:
+        suggestions.append({
+            "type": "Critical",
+            "title": "Desviación de Costes Detectada",
+            "description": f"{len(overbudget_sites)} centros han superado su asignación. Revisar 'Análisis de costes de sostenibilidad'."
+        })
+        
+    # 2. Check for Low Utilization (Inefficiency)
+    underutilized = [i for i in items if i.allocated_amount > 0 and (i.spent_amount / i.allocated_amount) < 0.1]
+    if underutilized:
+        suggestions.append({
+            "type": "Optimization",
+            "title": "Recursos Inmovilizados",
+            "description": f"{len(underutilized)} centros tienen <10% de ejecución. Valorar reasignación de partidas ('Planeación')."
+        })
+        
+    # 3. Protocol Compliance (Stub logic)
+    suggestions.append({
+        "type": "Process",
+        "title": "Verificación de Actividades",
+        "description": "Asegurar inclusión de todas las actividades de impacto económico según el protocolo del estudio (Fase Verificar)."
+    })
+    
+    return suggestions
+
+from fastapi import UploadFile, File
+import pandas as pd
+import io
+
+@app.post("/cta/import")
+async def import_cta_data(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    """Smart Import: Accepts Excel/CSV and populates Valid Records"""
+    try:
+        contents = await file.read()
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(contents))
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+            
+        # Normalize columns
+        df.columns = [str(c).lower().strip() for c in df.columns]
+        
+        # DEBUG: Log columns to see why it fails
+        with open("debug_import_columns.txt", "w") as f:
+            f.write(f"Columns found: {list(df.columns)}\n")
+            f.write(f"First row: {df.iloc[0].to_dict() if not df.empty else 'EMPTY'}\n")
+        
+        count = 0
+        
+        # Heuristic 1: Regulatory Documents (Broadened)
+        if any(c in df.columns for c in ['title', 'document', 'submission', 'protocol']):
+            for _, row in df.iterrows():
+                # Normalizing Data
+                raw_status = str(row.get('status', 'Pending')).strip().title()
+                raw_type = str(row.get('type', 'Other')).strip()
+                
+                doc = RegulatoryDocument(
+                    product_id=1, 
+                    title=str(row.get('title', row.get('document', 'Untitled'))),
+                    # ... rest of fields
+                    type=raw_type,
+                    status=raw_status,
+                    submission_date=datetime.now()
+                )
+                session.add(doc)
+                count += 1
+            detected_type = "regulatory"
+                
+        # Heuristic 2: Budget (Broadened)
+        elif any(c in df.columns for c in ['site', 'hospital', 'center', 'amount', 'budget', 'allocated', 'cost', 'gastos']):
+             for _, row in df.iterrows():
+                # Fuzzy mappings
+                site = row.get('site') or row.get('hospital') or row.get('center') or 'Unknown Site'
+                allocated = row.get('allocated') or row.get('amount') or row.get('budget') or 0
+                spent = row.get('spent') or row.get('cost') or row.get('gastos') or 0
+                
+                budget = ClinicalBudget(
+                    trial_id=1,
+                    site_name=str(site),
+                    allocated_amount=float(allocated),
+                    spent_amount=float(spent),
+                    status=str(row.get('status', 'Active'))
+                )
+                session.add(budget)
+                count += 1
+             detected_type = "budget"
+        else:
+             detected_type = "unknown"
+                
+        session.commit()
+        return {"message": f"Successfully imported {count} records.", "type": detected_type}
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 

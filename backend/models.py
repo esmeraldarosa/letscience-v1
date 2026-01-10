@@ -246,3 +246,26 @@ class DrugInteraction(SQLModel, table=True):
     interaction_type: str # "Synergy", "Antagonism", etc.
     effect_description: str
     severity: str # "High", "Moderate", "Low"
+
+class RegulatoryDocument(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: int = Field(foreign_key="product.id")
+    
+    title: str = Field(description="Document title, e.g. 'Protocol v2.1'")
+    type: str = Field(description="Document type: 'Protocol', 'IB', 'Ethics', 'Contract'")
+    status: str = Field(description="Status: 'Pending', 'In Review', 'Approved', 'Expired'")
+    
+    submission_date: Optional[datetime] = None
+    approval_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+
+class ClinicalBudget(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    trial_id: int = Field(foreign_key="clinicaltrial.id")
+    
+    site_name: str = Field(description="Name of the hospital/center")
+    allocated_amount: float = Field(default=0.0)
+    spent_amount: float = Field(default=0.0)
+    
+    currency: str = Field(default="EUR")
+    status: str = Field(default="Active") # Active, Closed, Hold

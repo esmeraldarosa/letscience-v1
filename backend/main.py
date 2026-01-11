@@ -116,8 +116,8 @@ def get_product_intelligence(product_id: int, session: Session = Depends(get_ses
             "total_trials": len(product.trials),
             "latest_phase": product.development_phase
         },
-        "pharmacokinetics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit} for p in product.pharmacokinetics],
-        "pharmacodynamics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit, "target": p.target} for p in product.pharmacodynamics],
+        "pharmacokinetics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit, "conditions": p.conditions} for p in product.pharmacokinetics],
+        "pharmacodynamics": [{"parameter": p.parameter, "value": p.value, "unit": p.unit, "target": p.target, "mechanism_type": p.mechanism_of_action_type} for p in product.pharmacodynamics],
         "experimental_models": [{"model_name": m.model_name, "model_type": m.model_type, "description": m.description} for m in product.experimental_models]
     }
 
@@ -800,6 +800,80 @@ def get_my_subscriptions(user: User = Depends(get_current_user), session: Sessio
     
     product_ids = [s.product_id for s in subscriptions]
     products = session.exec(select(Product).where(Product.id.in_(product_ids))).all() if product_ids else []
+    
+    return products
+
+@app.get("/products/compare")
+def compare_products(ids: List[int] = Query(...), session: Session = Depends(get_session)):
+    """
+    Returns comparative intelligence for the selected product IDs.
+    Structure:
+    - Timeline Events (Trials start/end)
+    - Patent Cliffs (Expiry dates)
+    - PK Matrix (Side-by-side parameters)
+    """
+    products = session.exec(select(Product).where(Product.id.in_(ids))).all()
+    if not products:
+        raise HTTPException(status_code=404, detail="No products found")
+
+    # 1. Timeline Events (Clinical Trials)
+    timeline_events = []
+    trials = session.exec(select(ClinicalTrial).where(ClinicalTrial.product_id.in_(ids))).all()
+    
+    product_map = {p.id: p.name for p in products}
+
+    for t in trials:
+        if t.start_date:
+            timeline_events.append({
+                "product": product_map.get(t.product_id),
+                "type": "Trial Start",
+                "date": t.start_date.isoformat(),
+                "phase": t.phase,
+                "end_date": t.completion_date.isoformat() if t.completion_date else None,
+                "title": t.title
+            })
+
+    # 2. Patent Cliffs
+    patent_cliffs = []
+    patents = session.exec(select(Patent).where(Patent.product_id.in_(ids))).all()
+    
+    for p in patents:
+        if p.expiry_date:
+            year = p.expiry_date.year
+            # Simple logic: If expiry is within strategic horizon (e.g., next 10 years)
+            if 2024 <= year <= 2035:
+                patent_cliffs.append({
+                    "product": product_map.get(p.product_id),
+                    "year": year,
+                    "notes": f"Expiry of {p.source_id} ({p.patent_type})"
+                })
+    
+    # Deduplicate cliffs (one per product/year closest?)
+    # For simplicity, we just return them all or let frontend handle. 
+    # Let's sort headers for PK matrix.
+
+    # 3. PK Comparison Matrix
+    pk_data = session.exec(select(ProductPharmacokinetics).where(ProductPharmacokinetics.product_id.in_(ids))).all()
+    
+    # Pivot: { "Half-Life": { "Product A": "12h", "Product B": "14h" } }
+    pk_matrix = {}
+    
+    for pk in pk_data:
+        param = pk.parameter
+        prod_name = product_map.get(pk.product_id)
+        val = f"{pk.value} {pk.unit}"
+        
+        if param not in pk_matrix:
+            pk_matrix[param] = {}
+        
+        pk_matrix[param][prod_name] = val
+
+    return {
+        "products": [{"id": p.id, "name": p.name} for p in products],
+        "timeline_events": timeline_events,
+        "patent_cliffs": patent_cliffs,
+        "pk_comparison": pk_matrix
+    }
     
 # =====================
 # Report Generation Endpoints

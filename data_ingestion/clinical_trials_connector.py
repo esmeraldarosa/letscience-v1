@@ -3,7 +3,7 @@ from typing import List
 from datetime import datetime
 from .models import DataSourceConnector, IntelligenceRecord, SourceType
 
-class FDAConnector(DataSourceConnector):
+class ClinicalTrialsConnector(DataSourceConnector):
     """
     Connects to ClinicalTrials.gov API v2.
     """
@@ -12,17 +12,29 @@ class FDAConnector(DataSourceConnector):
     def search(self, query: str) -> List[IntelligenceRecord]:
         results = []
         try:
-            # We filter for recruiting studies related to the query
-            params = {
-                "query.term": query,
-                "pageSize": 5,
-                "dataset": "protocolSection,derivedSection" # Not exactly standard params, adjusting to v2 basics
-            }
-            # Simplified V2 GET
-            url = f"{self.BASE_URL}?query.term={query}&pageSize=5"
+            # Fallback to curl via subprocess because httpx/requests are blocked (TLS fingerprinting likely)
+            import subprocess
+            import json
             
-            response = httpx.get(url, timeout=10)
-            data = response.json()
+            cmd = [
+                "curl", "-s", 
+                f"{self.BASE_URL}?query.term={query}&pageSize=5",
+                "-H", "User-Agent: curl/8.7.1",
+                "-H", "Accept: application/json"
+            ]
+            
+            # print(f"DEBUG: Running {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"Error fetching Clinical Trials (curl failed): {result.stderr}")
+                return []
+                
+            try:
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                print(f"Error decoding Clinical Trials JSON from curl: {result.stdout[:100]}")
+                return []
             
             studies = data.get("studies", [])
             for study in studies:

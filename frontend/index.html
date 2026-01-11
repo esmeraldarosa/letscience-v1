@@ -2531,6 +2531,7 @@
                                                         <th className="px-4 py-3 font-medium">Value</th>
                                                         <th className="px-4 py-3 font-medium">Unit</th>
                                                         <th className="px-4 py-3 font-medium">Target / Context</th>
+                                                        <th className="px-4 py-3 font-medium">Mechanism</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -2541,6 +2542,7 @@
                                                                 <td className="px-4 py-3 text-slate-700">{pd.value}</td>
                                                                 <td className="px-4 py-3 text-slate-500">{pd.unit}</td>
                                                                 <td className="px-4 py-3 text-slate-500">{pd.target}</td>
+                                                                <td className="px-4 py-3"><Badge color="purple">{pd.mechanism_type || 'Unknown'}</Badge></td>
                                                             </tr>
                                                         ))
                                                     ) : (
@@ -2567,6 +2569,7 @@
                                                         <th className="px-4 py-3 font-medium">Parameter</th>
                                                         <th className="px-4 py-3 font-medium">Value</th>
                                                         <th className="px-4 py-3 font-medium">Unit / Note</th>
+                                                        <th className="px-4 py-3 font-medium">Conditions/Model</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -2576,6 +2579,7 @@
                                                                 <td className="px-4 py-3 font-medium text-slate-900">{pk.parameter}</td>
                                                                 <td className="px-4 py-3 text-slate-700">{pk.value}</td>
                                                                 <td className="px-4 py-3 text-slate-500">{pk.unit}</td>
+                                                                <td className="px-4 py-3 text-slate-500 italic">{pk.conditions || '-'}</td>
                                                             </tr>
                                                         ))
                                                     ) : (
@@ -2689,6 +2693,7 @@
                                                 <thead className="text-xs text-slate-500 uppercase bg-slate-50">
                                                     <tr>
                                                         <th className="px-4 py-3">Status</th>
+                                                        <th className="px-4 py-3">NCT ID</th>
                                                         <th className="px-4 py-3">Phase</th>
                                                         <th className="px-4 py-3">Title</th>
                                                         <th className="px-4 py-3">Sponsor</th>
@@ -2706,6 +2711,7 @@
                                                         .map(t => (
                                                             <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
                                                                 <td className="px-4 py-3"><Badge color={t.status === 'Recruiting' ? 'green' : 'gray'}>{t.status}</Badge></td>
+                                                                <td className="px-4 py-3 font-mono text-xs"><a href={`https://clinicaltrials.gov/study/${t.nct_id}`} target="_blank" className="text-indigo-600 hover:underline">{t.nct_id}</a></td>
                                                                 <td className="px-4 py-3 font-medium text-slate-700">{t.phase}</td>
                                                                 <td className="px-4 py-3 text-slate-600">{t.title}</td>
                                                                 <td className="px-4 py-3 text-slate-500 text-xs">{t.sponsor || '-'}</td>
@@ -3151,11 +3157,11 @@
                                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                                         <h3 className="text-sm font-bold text-slate-500 uppercase mb-4">Reaction Scheme</h3>
                                                         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                                                            {/* If Eliquis, show the specific generated image, else generic or empty */}
-                                                            {product_info.name.includes('Eliquis') || product_info.name.includes('Apixaban') ? (
+                                                            {/* Dynamic Synthesis Scheme */}
+                                                            {synthesis && synthesis.length > 0 && synthesis[0].image_url ? (
                                                                 <img
-                                                                    src="/app/assets/synthesis_scheme_apixaban.png"
-                                                                    alt="Apixaban Synthesis Scheme"
+                                                                    src={synthesis[0].image_url}
+                                                                    alt={synthesis[0].name || "Synthesis Scheme"}
                                                                     className="w-full h-auto object-contain p-2 hover:scale-105 transition-transform duration-500"
                                                                 />
                                                             ) : (
@@ -3166,7 +3172,7 @@
                                                             )}
                                                         </div>
                                                         <p className="text-xs text-slate-400 mt-2 text-center italic">
-                                                            Figure 1: Synthetic pathway from starting materials to final active pharmaceutical ingredient.
+                                                            Figure 1: {synthesis && synthesis.length > 0 ? synthesis[0].description : "Synthetic pathway."}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -3713,6 +3719,10 @@
                     const res = await fetch(`/products/compare?${query}`);
                     const data = await res.json();
                     setComparisonData(data);
+                    // Scroll to results
+                    setTimeout(() => {
+                        document.getElementById('comparison-results')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
                 } catch (e) {
                     console.error("Comparison failed", e);
                 }
@@ -3770,7 +3780,7 @@
 
                     {/* Results */}
                     {comparisonData && (
-                        <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-700">
+                        <div id="comparison-results" className="space-y-8 animate-in slide-in-from-bottom-8 duration-700">
 
                             {/* 1. Timeline */}
                             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
@@ -4593,6 +4603,11 @@ Start: ${ev.date}`}
 
             // Render Content based on View
             const renderContent = () => {
+                const handleProductSelect = (id) => {
+                    setSelectedProductId(id);
+                    setActiveView('drugs');
+                };
+
                 switch (activeView) {
                     case 'cta':
                         return <CTAManagementView />;
@@ -4600,28 +4615,28 @@ Start: ${ev.date}`}
                         return selectedProductId ? (
                             <ProductDetail productId={selectedProductId} onBack={() => setSelectedProductId(null)} />
                         ) : (
-                            <Dashboard onSelectProduct={setSelectedProductId} />
+                            <Dashboard onSelectProduct={handleProductSelect} />
                         );
                     case 'patents':
-                        return <PatentsView onSelectProduct={setSelectedProductId} />;
+                        return <PatentsView onSelectProduct={handleProductSelect} />;
                     case 'articles':
-                        return <ArticlesView onSelectProduct={setSelectedProductId} />;
+                        return <ArticlesView onSelectProduct={handleProductSelect} />;
                     case 'conferences':
-                        return <ConferencesView onSelectProduct={setSelectedProductId} />;
+                        return <ConferencesView onSelectProduct={handleProductSelect} />;
                     case 'adme':
-                        return <AdmeView onSelectProduct={setSelectedProductId} />;
+                        return <AdmeView onSelectProduct={handleProductSelect} />;
                     case 'models':
-                        return <ModelsView onSelectProduct={setSelectedProductId} />;
+                        return <ModelsView onSelectProduct={handleProductSelect} />;
                     case 'preclinical':
-                        return <PreclinicalView onSelectProduct={setSelectedProductId} />;
+                        return <PreclinicalView onSelectProduct={handleProductSelect} />;
                     case 'synthesis':
-                        return <SynthesisView onSelectProduct={setSelectedProductId} />;
+                        return <SynthesisView onSelectProduct={handleProductSelect} />;
                     case 'comparison':
                         return <ComparisonView />;
                     case 'chat':
                         return <ChatView />;
                     case 'clinical':
-                        return <ClinicalView onSelectProduct={setSelectedProductId} />;
+                        return <ClinicalView onSelectProduct={handleProductSelect} />;
                     case 'reports':
                         return <ReportsView />;
                     case 'analysis':
@@ -4633,7 +4648,7 @@ Start: ${ev.date}`}
                             </ErrorBoundary>
                         );
                     default:
-                        return <Dashboard onSelectProduct={setSelectedProductId} />;
+                        return <Dashboard onSelectProduct={handleProductSelect} />;
                 }
             };
 

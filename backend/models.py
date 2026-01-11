@@ -148,6 +148,7 @@ class ProductPharmacokinetics(SQLModel, table=True):
     parameter: str # e.g. "Tmax", "Cmax", "Bioavailability"
     value: str # e.g. "2-4 hours", "95%"
     unit: Optional[str] = None
+    conditions: Optional[str] = None # e.g. "Healthy Volunteers", "Mouse Model"
     product: Optional[Product] = Relationship(back_populates="pharmacokinetics")
 
 class ProductPharmacodynamics(SQLModel, table=True):
@@ -157,6 +158,7 @@ class ProductPharmacodynamics(SQLModel, table=True):
     value: str # e.g. "0.5 nM", "12 nM"
     unit: Optional[str] = None
     target: Optional[str] = None # e.g. "Factor Xa", "TNF-alpha"
+    mechanism_of_action_type: Optional[str] = None # e.g. "Agonist", "Antagonist", "Inhibitor"
     product: Optional[Product] = Relationship(back_populates="pharmacodynamics")
 
 class ProductExperimentalModel(SQLModel, table=True):
